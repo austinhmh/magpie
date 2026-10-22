@@ -189,6 +189,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		QuotaReads:           "asked",
 		SearchAll:            true,
 		NoAccountDiscovery:   true,
+		ReClaude:             true,
 		RedactModel:          true,
 		RedactModelName:      "astrlink-guard",
 		RedactModelScore:     map[string]float64{"astrlink-guard": 0.9},

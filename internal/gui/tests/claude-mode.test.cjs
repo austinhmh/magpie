@@ -35,15 +35,16 @@ const RUNS = {
   tui: { tui: true, last: { tui: true, at: ago(3) } },
   off: { tui: false, why: "off", last: { tui: false, why: "off", at: ago(3) } },
   os: { tui: false, why: "os" },
+  reclaude: { tui: false, why: "reclaude", last: { tui: false, why: "reclaude", at: ago(3) } },
 };
 
 // each language's words, as the i18n table has them
 const W = {
-  en: { row: "Claude Code runs as", tui: "Interactive mode (TUI)", inUse: "In use", lastTui: "interactive mode", allP: "Every request runs as claude -p" },
-  zh: { row: "Claude Code 运行方式", tui: "交互模式（TUI）", inUse: "使用中", lastTui: "交互模式", allP: "每个请求都以 claude -p 运行" },
-  "zh-TW": { row: "Claude Code 執行方式", tui: "互動模式（TUI）", inUse: "使用中", lastTui: "互動模式", allP: "每個請求都以 claude -p 執行" },
-  ja: { row: "Claude Code の実行方式", tui: "対話モード（TUI）", inUse: "使用中", lastTui: "対話モード", allP: "すべてのリクエストを claude -p で実行します" },
-  de: { row: "Claude Code läuft als", tui: "Interaktiver Modus (TUI)", inUse: "In Verwendung", lastTui: "interaktiver Modus", allP: "Jede Anfrage läuft als claude -p" },
+  en: { row: "Claude Code runs as", tui: "Interactive mode (TUI)", inUse: "In use", lastTui: "interactive mode", allP: "Every request runs as claude -p", viaReClaude: "Every request runs as claude -p, through ReClaude" },
+  zh: { row: "Claude Code 运行方式", tui: "交互模式（TUI）", inUse: "使用中", lastTui: "交互模式", allP: "每个请求都以 claude -p 运行", viaReClaude: "每个请求都经 ReClaude 以 claude -p 运行" },
+  "zh-TW": { row: "Claude Code 執行方式", tui: "互動模式（TUI）", inUse: "使用中", lastTui: "互動模式", allP: "每個請求都以 claude -p 執行", viaReClaude: "每個請求都經 ReClaude 以 claude -p 執行" },
+  ja: { row: "Claude Code の実行方式", tui: "対話モード（TUI）", inUse: "使用中", lastTui: "対話モード", allP: "すべてのリクエストを claude -p で実行します", viaReClaude: "すべてのリクエストを ReClaude 経由の claude -p で実行します" },
+  de: { row: "Claude Code läuft als", tui: "Interaktiver Modus (TUI)", inUse: "In Verwendung", lastTui: "interaktiver Modus", allP: "Jede Anfrage läuft als claude -p", viaReClaude: "Jede Anfrage läuft über ReClaude als claude -p" },
 };
 
 function serve(lang, run, switchOnly, reads) {
@@ -174,6 +175,17 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(reads.saved[1]?.claudePrintMode, true, "and back to -p");
       await page.waitForFunction(() => document.querySelectorAll("#modal .cc-pick .opt")[1]?.getAttribute("aria-pressed") === "true");
       assert.equal((await row.locator(".cc-said").textContent()).trim(), w.allP);
+      assert.deepEqual(errors, []);
+    });
+
+    test(`${engine} ${lang}: on ReClaude, every request is said to run as -p through it, not to fail`, async (t) => {
+      const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+      t.after(() => browser.close());
+      const { page, errors } = await openEditor(browser, lang, RUNS.reclaude);
+      const row = runRow(page);
+      await row.waitFor();
+      assert.equal((await row.locator(".cc-said").textContent()).trim(), w.viaReClaude);
+      assert.equal(await row.locator(".cc-said.bad").count(), 0, "ReClaude's -p is no failure");
       assert.deepEqual(errors, []);
     });
 

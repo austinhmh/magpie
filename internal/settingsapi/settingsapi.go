@@ -251,6 +251,7 @@ func Merge(body []byte, cur settings.Settings, web bool) (settings.Settings, err
 	in.RequestArchiveMaxMB = cur.RequestArchiveMaxMB   // in settings.json only
 	in.ClaudeRunsMost = cur.ClaudeRunsMost             // magpie claude-code runs, or settings.json (#2956)
 	in.GatewayConversations = cur.GatewayConversations // Sessions' explicit recording consent
+	in.ReClaude = cur.ReClaude                         // Providers' local source switch
 	in.RedactRules = cur.RedactRules                   // the masking rules, set on their own
 	in.RedactModel = cur.RedactModel                   // set on its own (privacy-model)
 	in.RedactModelName = cur.RedactModelName           // set on its own (privacy-model)

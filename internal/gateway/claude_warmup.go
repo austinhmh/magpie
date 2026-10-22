@@ -39,7 +39,7 @@ func warmClaude(ctx context.Context, configDir string) error {
 // it is how a Claude account's model test runs (provider.ProbeClaudeVia),
 // so the test asks Anthropic as Claude Code does, through Claude Code.
 func askClaude(ctx context.Context, configDir, model string) error {
-	binary, err := claudeBinary()
+	binary, err := claudeBinaryFor(ctx)
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func init() {
 // configDir (empty for its own): a command asking no model, run as
 // askClaude runs it, with nothing of the user's settings and nothing kept.
 func claudeUsage(ctx context.Context, configDir string) (string, error) {
-	binary, err := claudeBinary()
+	binary, err := claudeBinaryFor(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -231,6 +231,12 @@ func runClaudeTree(ctx context.Context, cmd *exec.Cmd, what string) error {
 		return err
 	}
 	defer room(false)
+	if provider.ReClaudeFrom(ctx) {
+		// A model test or /usage may have waited while the source was disabled.
+		if _, err := provider.ReClaudeBinary(ctx); err != nil {
+			return err
+		}
+	}
 	t, err := proc.StartTree(cmd)
 	if err != nil {
 		return err

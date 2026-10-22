@@ -7,6 +7,31 @@ saved session, that had its last turn, and what a run leaves on disk. Tool
 calls within a turn (`match`, `continueWith`) are only touched on where they
 meet it.
 
+With the local ReClaude source explicitly enabled, the existing `claude`
+provider instead starts the installed `reclaude` launcher. At the entry to
+`serveClaudeSubscription`, `Account.Token` checks the selected source before
+either a new turn or tool results can reach an existing run. The shared
+`provider.ReClaudeBinary` check finds the launcher and checks daemon status
+with the caller's context and a five-second timeout; the UI maps that same
+check to its on/ready/reason fields. A new subprocess checks again after
+waiting for a process slot, so a disabled source is not started from a
+queued request. A failure never falls through to a personal Claude account.
+Model probes and allowance reads use the same launcher and a per-call
+source context. The MCP callback, turn/session handling and protocol
+translation stay the same. Its runs are always `claude -p`: ReClaude's
+launcher hasn't been run in Claude Code's interactive mode, so with
+ReClaude on `claudeTUIOn` is false and `claudeMachineWhy` says
+`reclaude`. A request is never refused for not being interactive, a `-p`
+run is kept for its conversation's next turn, and the provider editor's
+"Claude Code runs as" row says every request runs as claude -p through
+ReClaude (`TestReClaudeRunsAsPrint`, `claude-mode.test.cjs`).
+ReClaude's daemon ports are not OpenAI-compatible upstreams; its FAQ does
+not support third-party API-key clients, so this is a local integration,
+not an officially supported ReClaude API.
+
+The [local implementation record](../reclaude-local-bridge.md) explains
+the rationale, patch footprint, verification results, and upstream-merge checklist.
+
 ## Which Claude Code runs
 
 `claudeBinary` (and the sign-in's `claudeExecutable`) take
@@ -43,8 +68,8 @@ FrierenF on Discord). A run as anyone else has its env as before. Only the
 bridge's run gets it; the warm-up and `/usage` runs don't skip
 permissions.
 
-Every Claude Code magpie starts for the subscription (a turn's run, the
-warm-up and model test `askClaude`, `/usage`, and the sign-in's
+Every ordinary Claude Code process magpie starts for the subscription (a
+turn's run, the warm-up and model test `askClaude`, `/usage`, and the sign-in's
 `auth login` and `auth status`) is given its proxy through one helper,
 `claudeCLI.proxied` in each package, which is
 `netproxy.EnvForBunWith`: the account's own proxy, else the
@@ -62,6 +87,13 @@ user's own Claude Code sessions leaves a SOCKS proxy out (see
 [Providers and accounts](providers-accounts.md)).
 
 A saved account added by a setup-token (see [Providers and accounts](providers-accounts.md)) has no sign-in in its config directory. `inClaudeDir`, which builds the env of every run in a saved account's directory (a turn's run, the warm-up, `askClaude`, `/usage`), drops any `CLAUDE_CODE_OAUTH_TOKEN` it was given and sets it to `provider.ClaudeDirToken(configDir)` when that directory is a token account's: the token reaches the real Claude Code there and nowhere else, never on its command line, never in a log, and never to Claude Code's own account. magpie asks Anthropic nothing with it; the entrypoint and everything else about the run are as for any account.
+
+The gateway's `claudeCLI.proxied` handles ReClaude's environment in one
+place for turns, model tests and `/usage`: it removes conflicting config
+directories and traffic-disabling variables from the prepared environment
+and does not inject magpie's account or global upstream proxy. The launcher
+manages its own connection and config. No health cache or background probe
+is needed, and the ordinary Claude environment remains unchanged.
 
 The helper offers each of the client's tools under `bridgeToolName`
 (`bridgeTools`), which Claude Code calls `mcp__magpie__<name>`. Claude Code

@@ -172,6 +172,11 @@ func loginID(l savedLogin) string {
 // for an account whose logins haven't been written since — and for an
 // agent that keeps its accounts elsewhere, made of the name always.
 func LoginID(agent, user string) string {
+	if agent == "claude" && user == reClaudeUser {
+		if selected, _ := ReClaudeEnabled(); selected {
+			return loginID(savedLogin{Agent: agent, User: user})
+		}
+	}
 	for _, l := range readLogins() {
 		if l.Agent == agent && accountKey(l.User) == accountKey(user) {
 			return loginID(l)
@@ -846,6 +851,12 @@ func rememberLogins(force bool) {
 	now := time.Now().UTC().Truncate(time.Second)
 	changed := false
 	for _, agent := range loginAgents {
+		if agent == "claude" {
+			selected, err := ReClaudeEnabled()
+			if err != nil || selected {
+				continue // leave existing Claude credentials and bookmarks untouched
+			}
+		}
 		if accountRemoved(agent) {
 			continue
 		}
@@ -962,6 +973,15 @@ func loginsNow(agent string) []Login {
 	if settings.AccountDiscoveryOff() {
 		return nil
 	}
+	reClaude, sourceError := ReClaudeEnabled()
+	if agent == "claude" {
+		if sourceError != nil {
+			return nil
+		}
+		if reClaude {
+			return []Login{reClaudeLogin()}
+		}
+	}
 	if pp, ok := pluginOfAgent(agent); ok {
 		return pluginLoginList(pp)
 	}
@@ -1016,6 +1036,9 @@ func loginsNow(agent string) []Login {
 	defer loginsMu.Unlock()
 	active := map[string]string{}
 	for _, a := range loginAgents {
+		if a == "claude" && (reClaude || sourceError != nil) {
+			continue
+		}
 		if l, ok := liveLogin(a); ok {
 			active[a] = l.User
 		}
@@ -1023,7 +1046,7 @@ func loginsNow(agent string) []Login {
 	var out []Login
 	ls := readLogins()
 	standIn := ""
-	if _, ok := active["claude"]; !ok {
+	if _, ok := active["claude"]; !ok && !reClaude && sourceError == nil {
 		// the one the provider is listed on (claudeStandInAccount), a
 		// signed-out one too, which the row then says is signed out
 		standIn = claudeListed(ls)
@@ -1037,6 +1060,9 @@ func loginsNow(agent string) []Login {
 		}
 	}
 	for _, l := range ls {
+		if l.Agent == "claude" && (reClaude || sourceError != nil) {
+			continue
+		}
 		if (agent != "" && l.Agent != agent) || sideAgent(l.Agent) || strings.HasPrefix(l.Agent, "plugin:") {
 			continue
 		}
@@ -1061,6 +1087,9 @@ func loginsNow(agent string) []Login {
 			lg.Returns = l.On && strings.EqualFold(back[l.Agent], l.User)
 		}
 		out = append(out, lg)
+	}
+	if reClaude && agent == "" {
+		out = append([]Login{reClaudeLogin()}, out...)
 	}
 	return append(out, side...)
 }
@@ -1401,6 +1430,11 @@ func putClaudeLogin(l savedLogin) error {
 func ForgetLogin(agent, user string) error {
 	if settings.AccountDiscoveryOff() {
 		return errAccountDiscoveryOff
+	}
+	if agent == "claude" {
+		if err := personalClaudeAvailable(); err != nil {
+			return err
+		}
 	}
 	if pp, ok := pluginOfAgent(agent); ok {
 		return forgetPluginLogin(pp, user)

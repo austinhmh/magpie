@@ -7,6 +7,19 @@ import (
 	"github.com/yetone/magpie/internal/filememo"
 )
 
+// SetReClaude changes only the local Claude account source. An unreadable
+// settings file is never replaced by a default with the source turned off.
+func SetReClaude(on bool) error {
+	fileMu.Lock()
+	defer fileMu.Unlock()
+	current, err := loadChecked()
+	if err != nil {
+		return err
+	}
+	current.ReClaude = on
+	return save(current, false)
+}
+
 // AccountDiscoveryOff is whether magpie leaves agents' sign-ins unread
 // (#1535): NoAccountDiscovery saved, or MAGPIE_NO_ACCOUNTS set to anything
 // but "", "0" or "false" for this process alone. The variable only ever

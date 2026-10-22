@@ -37,6 +37,9 @@ func claudeWarmUsage(ctx context.Context) map[string]SubscriptionQuota {
 // (claude_dirs.go), "" for the one Claude Code is signed in to.
 func warmClaudeLogin(send func(ctx context.Context, configDir string) error) func(context.Context, string) error {
 	return func(ctx context.Context, user string) error {
+		if selected, err := ReClaudeEnabled(); err != nil || selected {
+			return fmt.Errorf("Claude Code warm-up is unavailable while the account source is ReClaude or unknown")
+		}
 		// the account's own proxy, which send's Claude Code runs with too
 		ctx = ViaLogin(ctx, "claude", user)
 		ls := Logins("claude")
@@ -77,6 +80,9 @@ func ClaudeWarmed() map[string]time.Time { return codexWarmedIn(claudeWarmPath()
 // KeepClaudeWindowsWarm starts the Claude accounts' windows as they reset,
 // while settings say to, each with one request send makes.
 func KeepClaudeWindowsWarm(ctx context.Context, send func(ctx context.Context, configDir string) error) {
+	if selected, _ := ReClaudeEnabled(); selected {
+		return // the synthetic source never starts an allowance window for the user
+	}
 	w := codexWarmer{path: claudeWarmPath(), now: time.Now, usage: claudeWarmUsage, send: warmClaudeLogin(send),
 		expect: claudeWindowsExpected, warmed: claudeWarmedNow}
 	keepWarm(ctx, "claude", w, func() (string, []string) { s := settings.Load(); return s.ClaudeWarmup, s.ClaudeWarmAts })

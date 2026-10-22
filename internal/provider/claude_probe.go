@@ -42,13 +42,19 @@ func (p Provider) testClaude(ctx context.Context, model string) Result {
 	}
 	ctx, cancel := context.WithTimeout(ctx, claudeWait)
 	defer cancel()
+	if p.Account.ReClaude {
+		ctx = WithReClaude(ctx)
+	}
 	dir, _, err := p.Account.Token(ctx)
 	if err != nil {
 		r.Error = err.Error()
 		return r
 	}
 	start := time.Now()
-	version := ClaudeLoginVersion(p.Account.User)
+	version := ""
+	if !p.Account.ReClaude {
+		version = ClaudeLoginVersion(p.Account.User)
+	}
 	err = claudeCLIProbe(probelog.Taken(ctx), dir, model)
 	r.Millis = time.Since(start).Milliseconds()
 	// Claude Code sent it, not a client of magpie's: written down from
@@ -59,7 +65,9 @@ func (p Provider) testClaude(ctx context.Context, model string) Result {
 	}
 	probelog.NoteResult(probelog.WithModel(ctx, model), "claude -p", start, status, msg)
 	if err != nil {
-		NoteClaudeSignInFailure(p.Account.User, version, err.Error())
+		if !p.Account.ReClaude {
+			NoteClaudeSignInFailure(p.Account.User, version, err.Error())
+		}
 		r.Error = err.Error()
 		return r
 	}

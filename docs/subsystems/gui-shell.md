@@ -7,6 +7,13 @@ with no binding generator and no bundler. `magpie web` serves the same page
 to a browser for a machine with no desktop. Package `internal/gui` hosts all
 three.
 
+The Providers page has a local ReClaude source switch even when no provider
+is listed. `/api/providers` reports its on/ready/reason status and
+`POST /api/providers/reclaude` changes only this computer's setting. A
+synthetic Claude account has no OAuth account management actions; a failed
+daemon status remains visible on the source row. The source does not claim
+ReClaude officially supports third-party API-key clients.
+
 ## Responsibilities and sources of truth
 
 | Part | Responsibility | Source |

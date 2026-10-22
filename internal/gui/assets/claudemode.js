@@ -80,11 +80,15 @@ window.claudeModeDraw = function (box, m) {
   pick.addEventListener("focusout", (e) => { if (!pick.contains(e.relatedTarget)) ccTipOff(); });
   v.append(pick);
   const last = m.last;
+  // ReClaude's launcher runs every Claude request as -p, whatever the switch says
+  const reclaude = m.why === "reclaude";
+  const failing = on && !m.tui && !reclaude;
   let said = "";
-  if (on && !m.tui) said = t("Claude requests fail: {why}", { why: ccWhy(m.why) });
+  if (reclaude) said = t("Every request runs as claude -p, through ReClaude");
+  else if (failing) said = t("Claude requests fail: {why}", { why: ccWhy(m.why) });
   else if (!on) said = t("Every request runs as claude -p");
   else if (last && last.tui) said = t("Last request {ago}: interactive mode", { ago: ago(last.at) });
-  if (said) v.append(el("span", "cc-said" + (on && !m.tui ? " bad" : ""), said));
+  if (said) v.append(el("span", "cc-said" + (failing ? " bad" : ""), said));
   box.replaceChildren(...field(t("Claude Code runs as"), v, ""));
 };
 // the editor going away takes its tip with it
