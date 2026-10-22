@@ -1,0 +1,79 @@
+internal/provider/signin.go
+  s_99fccf3403855d::t_e3423a0b89005c 248-252
+internal/gui/providers.go
+  s_99fccf3403855d::t_e3423a0b89005c 478-482,698,848,1050-1064
+  s_99fccf3403855d::t_e2b892a0a27ab2 1065
+internal/provider/logins.go
+  s_99fccf3403855d::t_e3423a0b89005c 166-170,758-763,860-868,923-925,933,945-947,969-971,1276-1280
+internal/settings/settings.go
+  s_99fccf3403855d::t_e3423a0b89005c 279-281,1035
+internal/gateway/reclaude_test.go
+  s_99fccf3403855d::t_e3423a0b89005c 1-243
+internal/gui/api.go
+  s_99fccf3403855d::t_e3423a0b89005c 1223
+docs/subsystems/gui-shell.md
+  s_99fccf3403855d::t_e3423a0b89005c 10-16
+internal/gui/assets/i18n.js
+  s_99fccf3403855d::t_e3423a0b89005c 7-13,3885-3891,7748-7754,11613-11619
+internal/gui/tests/reclaude-source.test.cjs
+  s_99fccf3403855d::t_e3423a0b89005c 1-95
+internal/settings/accounts.go
+  s_99fccf3403855d::t_e3423a0b89005c 10-22
+internal/provider/subscription_usage.go
+  s_99fccf3403855d::t_e3423a0b89005c 318,329-331,447,449,451-460,590-592,596-598,773-777,827,837,855
+internal/gateway/claude_warmup.go
+  s_99fccf3403855d::t_e3423a0b89005c 41,86,149-154
+docs/subsystems/providers-accounts.md
+  s_99fccf3403855d::t_e3423a0b89005c 12-23
+internal/provider/quota_last.go
+  s_99fccf3403855d::t_e3423a0b89005c 66-71
+internal/provider/reclaude_test.go
+  s_99fccf3403855d::t_e3423a0b89005c 1-146
+internal/provider/reclaude.go
+  s_99fccf3403855d::t_e3423a0b89005c 1-138
+internal/provider/logins_on.go
+  s_99fccf3403855d::t_e3423a0b89005c 34-38,111-113,140-142,194-202
+internal/provider/account.go
+  s_99fccf3403855d::t_e3423a0b89005c 46-49,761-770
+internal/cli/accounts_cli.go
+  s_99fccf3403855d::t_e3423a0b89005c 33-57
+docs/reclaude-local-bridge.md
+  s_99fccf3403855d::t_e3423a0b89005c 1-339
+internal/provider/claude_probe.go
+  s_99fccf3403855d::t_e3423a0b89005c 42-44,51-54,58-60
+internal/gui/assets/index.html
+  s_99fccf3403855d::t_e3423a0b89005c 109-112
+internal/provider/claude_warmup.go
+  s_99fccf3403855d::t_e3423a0b89005c 40-42,83-85
+internal/gateway/claude_subscription.go
+  s_99fccf3403855d::t_e3423a0b89005c 552-554,622-630,771,2010-2030,4019-4031,4035-4039,4064
+internal/gui/settings_keep_test.go
+  s_99fccf3403855d::t_e3423a0b89005c 182
+internal/gui/reclaude_test.go
+  s_99fccf3403855d::t_e3423a0b89005c 1-64
+internal/provider/login_usage.go
+  s_99fccf3403855d::t_e3423a0b89005c 287-290
+internal/gui/assets/app.js
+  s_99fccf3403855d::t_e3423a0b89005c 5844-5863,5900,5915-5917,12898-12904
+docs/subsystems/claude-subscription-bridge.md
+  s_99fccf3403855d::t_e3423a0b89005c 10-28,57-58,75-80
+  s_99fccf3403855d::t_ff33bfb5605e2b 81
+internal/cli/main.go
+  s_99fccf3403855d::t_e3423a0b89005c 94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c6c0bf075cef8f2177f8714c15776d3871760d7",
+  "prompts": {},
+  "sessions": {
+    "s_99fccf3403855d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f9dff789-0663-4dfe-8aa8-a0484d8c5780",
+        "model": "model-austin-gpt6astra"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
