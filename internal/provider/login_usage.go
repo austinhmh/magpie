@@ -284,6 +284,10 @@ func loginProvider(l Login) string {
 }
 
 func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
+	selected, _ := ReClaudeEnabled()
+	if l.Agent == "claude" && l.User == reClaudeUser && selected {
+		return claudeSubscriptionUsage(WithReClaude(ctx), l.User)
+	}
 	ctx = ViaLogin(ctx, loginProvider(l), l.User) // asked through the account's own proxy
 	if strings.HasPrefix(l.Agent, "plugin:") {
 		return pluginLoginQuota(ctx, l)

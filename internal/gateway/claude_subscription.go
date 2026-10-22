@@ -549,6 +549,9 @@ func (c claudeCLI) env(env []string, configDir string) []string {
 // http:// and https:// proxies (#2651). One in a WSL distro reaches the
 // bridge only when the distro shares Windows' loopback.
 func (c claudeCLI) proxied(ctx context.Context, env []string) ([]string, error) {
+	if provider.ReClaudeFrom(ctx) {
+		return cleanReClaudeEnv(env), nil
+	}
 	return netproxy.EnvForBunWith(claudeProxy(ctx), env, c.wsl == nil || c.wsl.Host == "")
 }
 
@@ -604,14 +607,6 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 
 // startRun is start's Claude Code, from the saved session from when set.
 func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, configDir, owner string, from *savedSession) (*subscriptionRun, <-chan Event, error) {
-	binary, err := claudeBinary()
-	if err != nil {
-		return nil, nil, err
-	}
-	exe, err := binary.exe()
-	if err != nil {
-		return nil, nil, err
-	}
 	// a place among the Claude Code processes this machine holds (#2956),
 	// freed as the process exits, or here if it never starts
 	room, err := claudeRoom.take(ctx, "a Claude Code run on "+model)
@@ -624,6 +619,15 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 			room(false)
 		}
 	}()
+	// The source may have changed while this request waited for room.
+	binary, err := claudeBinaryFor(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	exe, err := binary.exe()
+	if err != nil {
+		return nil, nil, err
+	}
 	b.sweep.Do(func() {
 		go func() {
 			sweepBridgeProjects(claudeConfigDir(), os.TempDir())
@@ -764,7 +768,7 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	run.clientMarks = req.clientCache != nil
 	run.lean = req.leanPrompt
 	run.cachePrefix = prefix
-	if user, _ := ownerAccount(owner); user != "" {
+	if user, _ := ownerAccount(owner); user != "" && !provider.ReClaudeFrom(ctx) {
 		run.loginVersion = provider.ClaudeLoginVersion(user)
 	}
 	// A caller may abandon a turn after receiving tool_use. Do not leave the
@@ -2001,6 +2005,27 @@ func cleanClaudeEnv(env []string) []string {
 		// its limits, always: the mark on the caller's instructions
 		// (renderClaudePrompt) is an hour's, which may not follow a 5m one
 		"CLAUDE_CODE_PROMPT_CACHE_TTL=1h")
+}
+
+// cleanReClaudeEnv removes ReClaude conflicts from an environment already
+// prepared by cleanClaudeEnv and, for /usage, its additional settings.
+func cleanReClaudeEnv(env []string) []string {
+	return slices.DeleteFunc(env, func(value string) bool {
+		name, _, _ := strings.Cut(value, "=")
+		switch name {
+		case "CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_TELEMETRY", "DISABLE_ERROR_REPORTING", "DISABLE_AUTOUPDATER":
+			return true
+		}
+		return false
+	})
+}
+
+func claudeBinaryFor(ctx context.Context) (claudeCLI, error) {
+	if provider.ReClaudeFrom(ctx) {
+		path, err := provider.ReClaudeBinary(ctx)
+		return claudeCLI{path: path}, err
+	}
+	return claudeBinary()
 }
 
 type lockedWriter struct{ run *subscriptionRun }
@@ -3991,17 +4016,33 @@ func (b *subscriptionBridge) whyCallsLost(req *Request) string {
 }
 
 func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request, from provider.Protocol, p provider.Provider, model string, body []byte, usage *Usage) (int, string) {
+	requestContext := r.Context()
+	if p.Account != nil && p.Account.ReClaude {
+		requestContext = provider.WithReClaude(requestContext)
+	} else {
+		requestContext = p.Via(requestContext)
+	}
+	// Tool results can resume a run without calling start. Check the source
+	// before entering either path and keep the account's directory for start.
+	configDirectory, _, err := p.Account.Token(requestContext)
+	if err != nil {
+		return writeError(w, from, http.StatusBadGateway, "Claude Code: "+err.Error()), err.Error()
+	}
+	r = r.WithContext(requestContext)
 	owner := p.ID
 	if p.Account != nil {
 		owner += "\x00" + p.Account.User
-		if p.Account.AgentsOwn() {
+		if p.Account.ReClaude {
+			// A personal account of the same name must never resume a run
+			// started through ReClaude after the local source changes.
+			owner += "\x00reclaude"
+		} else if p.Account.AgentsOwn() {
 			// A process in the agent's home reads that home's current sign-in.
 			// A saved account must not resume it after the sign-in moves.
 			owner += "\x00" + ownHome
 		}
 	}
 	start := func(ctx context.Context, req *Request) (*subscriptionRun, <-chan Event, error) {
-		ctx = p.Via(ctx) // the account's own proxy, its CLI run's too
 		if run, events := s.subscription.resume(req, owner); run != nil {
 			return run, events, nil
 		}
@@ -4020,14 +4061,7 @@ func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request,
 			req.Effort = "low"
 		}
 		req.clientCache.selected(from == nil)
-		dir, _, err := p.Account.Token(ctx)
-		if err != nil {
-			if from != nil {
-				from.discard()
-			}
-			return nil, nil, err
-		}
-		return s.subscription.start(ctx, req, model, dir, owner, from)
+		return s.subscription.start(ctx, req, model, configDirectory, owner, from)
 	}
 	return s.serveSubscription(w, r, from, "Claude Code", model, owner, body, usage, start)
 }

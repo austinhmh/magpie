@@ -475,10 +475,11 @@ type excludedJSON struct {
 }
 
 type providersJSON struct {
-	Providers []providerJSON `json:"providers"`
-	Presets   []presetJSON   `json:"presets"`
-	Excluded  []excludedJSON `json:"excluded"` // sign-ins magpie found but will not share
-	Gateway   gatewayJSON    `json:"gateway"`
+	Providers []providerJSON         `json:"providers"`
+	ReClaude  provider.ReClaudeState `json:"reclaude"`
+	Presets   []presetJSON           `json:"presets"`
+	Excluded  []excludedJSON         `json:"excluded"` // sign-ins magpie found but will not share
+	Gateway   gatewayJSON            `json:"gateway"`
 	// CodexDaemon is the account Codex's background app-server is still
 	// signed in to after Codex was switched to another; "" when none is
 	// left behind (provider.CodexDaemonStale).
@@ -694,7 +695,7 @@ func providerInfoWith(p provider.Provider, agents []agentUse, desktop map[string
 		out.Account = &accountJSON{Account: *a, Agent: a.Agent}
 		out.Account.Name, out.Account.Icon = accountLabel(p)
 		out.Account.Logins = provider.Logins(a.Agent)
-		if a.Agent == "claude" {
+		if a.Agent == "claude" && !a.ReClaude {
 			out.Account.WSL = provider.ClaudeInWSL()
 		}
 		if pp, ok := provider.PluginOf(p.ID); ok && p.IsPlugin() {
@@ -844,6 +845,7 @@ func providersState() providersJSON {
 	provider.FetchNewBehind(8 * time.Second)
 	agents := agent.Detected()
 	s := providersJSON{Providers: []providerJSON{}, Presets: []presetJSON{}, Excluded: []excludedJSON{}}
+	s.ReClaude = provider.ReClaudeStatus()
 	s.OnPlugins = provider.OnPlugins()
 	s.Movable = provider.MovableIDs()
 	// a retired built-in whose plugin is installed is the plugin's, moved
@@ -1044,6 +1046,22 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		s := providersState()
 		writeJSON(rw, s)
 		keepProviders(s)
+	})
+	mux.HandleFunc("POST /api/providers/reclaude", func(rw http.ResponseWriter, r *http.Request) {
+		var choice struct {
+			On bool `json:"on"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&choice); err != nil {
+			fail(rw, err)
+			return
+		}
+		if err := provider.SetReClaude(choice.On); err != nil {
+			fail(rw, err)
+			return
+		}
+		current := providersState()
+		writeJSON(rw, current)
+		keepProviders(current)
 	})
 	// Recent-call bodies are read only when their row is opened, not with
 	// every Providers or Gateway refresh (#1521): forty calls' bodies made

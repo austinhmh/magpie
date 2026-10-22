@@ -245,6 +245,11 @@ func StartSignInWith(agent string, o SignInOptions) (SignInState, error) {
 	if settings.AccountDiscoveryOff() {
 		return SignInState{}, errAccountDiscoveryOff
 	}
+	if agent == "claude" {
+		if err := personalClaudeAvailable(); err != nil {
+			return SignInState{}, err
+		}
+	}
 	// one moved onto its plugin signs in there: an account signed in to
 	// here would be the built-in's, which nothing serves now
 	if PluginServes(agent) {

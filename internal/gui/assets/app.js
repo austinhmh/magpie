@@ -5841,6 +5841,26 @@ function renderProviders() {
   // scroll to the top; put it back so closing the editor leaves the reader
   // where they were.
   const view = $("#view-providers"), top = view.scrollTop;
+  const source = providers.reclaude || { on: false, ready: false };
+  const sourceNote = $("#reclaudeReason");
+  sourceNote.textContent = source.why ? source.why : source.on
+    ? t("ReClaude serves claude/* through its local launcher; your Claude Code accounts are not used")
+    : t("Off by default; your Claude Code accounts stay unchanged");
+  const sourceSwitch = $("#reclaudeSwitch");
+  sourceSwitch.textContent = t(source.on ? "Turn off" : "Turn on");
+  sourceSwitch.setAttribute("aria-pressed", String(source.on));
+  sourceSwitch.onclick = async (event) => {
+    event.stopPropagation();
+    sourceSwitch.disabled = true;
+    try {
+      providers = await api("providers/reclaude", { on: !source.on });
+      renderProviders();
+    } catch (error) {
+      status(error.message, "err");
+    } finally {
+      sourceSwitch.disabled = false;
+    }
+  };
   markNewPartners();
   keepIcons($("#providers"), $("#offProviders"), $("#addSheet"), $("#excluded"));
   view.classList.remove("loading");
@@ -5877,7 +5897,7 @@ function renderProviders() {
     // accounts list says of each, not a green "signed in"
     const inUse = (p.account?.logins || []).filter((l) => l.on || l.active);
     const lapsed = inUse.length > 0 && inUse.every((l) => l.lapsed);
-    who.append(name, el("div", "sub", (p.account ? t(lapsed ? "{user} is signed out" : "signed in as {user}", { user: p.account.user }) : p.host) + " · " + models));
+    who.append(name, el("div", "sub", (p.account?.reclaude ? t("Local ReClaude source") : p.account ? t(lapsed ? "{user} is signed out" : "signed in as {user}", { user: p.account.user }) : p.host) + " · " + models));
     const using = p.agents.filter((a) => a.current);
     const uses = el("div", "uses");
     for (const a of using) {
@@ -5892,6 +5912,9 @@ function renderProviders() {
     if (p.account && lapsed) {
       key = el("span", "key acct none", t("Signed out"));
       key.title = t("Signed out — add this account again to use it");
+    } else if (p.account?.reclaude) {
+      key = el("span", "key " + (providers.reclaude?.ready ? "acct" : "none"), t(providers.reclaude?.ready ? "Ready" : "Unavailable"));
+      key.title = providers.reclaude?.why || t("Local ReClaude source");
     } else if (p.account) {
       // the row names the vendor: a plan too long for the pill goes without it
       const plan = accountPlan(p.account), bare = plan.startsWith(p.name + " ") ? plan.slice(p.name.length + 1) : "";
@@ -12872,6 +12895,13 @@ function loginsInOrder(a, p) {
 function renderAccounts(a, p) {
   const sub = subOf(a.agent);
   const list = el("div", "accts");
+  if (a.reclaude) {
+    const note = el("div", "row pref", t("ReClaude is the only Claude account used by magpie while this source is on"));
+    list.append(note);
+    const quota = loginUsageOf(a.agent);
+    if (quota?.[a.user]) list.append(accountQuota(quota, a.user, () => 0, null));
+    return list;
+  }
   const ls = loginsInOrder(a, p);
   // a Claude account whose sign-in Anthropic refused, or that has none,
   // can't be used till it is signed in again; another subscription's lapse

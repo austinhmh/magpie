@@ -39,17 +39,25 @@ func (p Provider) testClaude(ctx context.Context, model string) Result {
 	}
 	ctx, cancel := context.WithTimeout(ctx, claudeWait)
 	defer cancel()
+	if p.Account.ReClaude {
+		ctx = WithReClaude(ctx)
+	}
 	dir, _, err := p.Account.Token(ctx)
 	if err != nil {
 		r.Error = err.Error()
 		return r
 	}
 	start := time.Now()
-	version := ClaudeLoginVersion(p.Account.User)
+	version := ""
+	if !p.Account.ReClaude {
+		version = ClaudeLoginVersion(p.Account.User)
+	}
 	err = claudeCLIProbe(ctx, dir, model)
 	r.Millis = time.Since(start).Milliseconds()
 	if err != nil {
-		NoteClaudeSignInFailure(p.Account.User, version, err.Error())
+		if !p.Account.ReClaude {
+			NoteClaudeSignInFailure(p.Account.User, version, err.Error())
+		}
 		r.Error = err.Error()
 		return r
 	}

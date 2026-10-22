@@ -315,6 +315,7 @@ func SubscriptionUsageReading() bool {
 
 // visibleQuotas drops accounts removed from magpie since the last refresh.
 func visibleQuotas(all []SubscriptionQuota) []SubscriptionQuota {
+	reClaudeSelected, sourceError := ReClaudeEnabled()
 	hidden := map[string]bool{}
 	for _, p := range load().Providers {
 		hidden[p.ID] = p.Hidden || p.Off // switched off: not asked either
@@ -324,6 +325,9 @@ func visibleQuotas(all []SubscriptionQuota) []SubscriptionQuota {
 	for _, q := range all {
 		if hidden[q.Provider] {
 			continue
+		}
+		if q.Provider == "claude" && (sourceError != nil || (q.User == reClaudeUser) != reClaudeSelected) {
+			continue // a cached card of the source no longer selected is not its replacement's
 		}
 		if q.Provider == "gemini" || q.Provider == "antigravity" {
 			if chosen == nil {
@@ -440,14 +444,20 @@ func fetchSubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 	// the account asks its CLI who is signed in (leftAlone)
 	if !hidden["claude"] {
 		if p, ok := claudeAccount(); ok {
-			// signed out, Claude Code's own allowance is none: the account
-			// in its place is a saved one, read as the others are
-			if ls := accountsOf("claude"); len(ls) > 1 || p.Account.standIn {
-				fetches = append(fetches, perLogin(via("claude"), ls, accountCard("claude"))...)
-			} else {
+			if p.Account.ReClaude {
 				fetches = append(fetches, withUser(ctx, p.Account.User, func() SubscriptionQuota {
-					return claudeSubscriptionUsage(viaLogin("claude", p.Account.User), p.Account.User)
+					return claudeSubscriptionUsage(WithReClaude(ctx), p.Account.User)
 				}))
+			} else {
+				// signed out, Claude Code's own allowance is none: the account
+				// in its place is a saved one, read as the others are
+				if ls := accountsOf("claude"); len(ls) > 1 || p.Account.standIn {
+					fetches = append(fetches, perLogin(via("claude"), ls, accountCard("claude"))...)
+				} else {
+					fetches = append(fetches, withUser(ctx, p.Account.User, func() SubscriptionQuota {
+						return claudeSubscriptionUsage(viaLogin("claude", p.Account.User), p.Account.User)
+					}))
+				}
 			}
 		}
 	}
@@ -577,12 +587,15 @@ func (e *accountStatusError) Error() string { return http.StatusText(e.status) }
 // a Team seat isn't the email alone `claude auth status` gives.
 func claudeSubscriptionUsage(ctx context.Context, user string) SubscriptionQuota {
 	q := SubscriptionQuota{Provider: "claude", Name: "Claude Code", Icon: "claude-color", Windows: []QuotaWindow{}}
-	if _, _, ok := claudeCredential(); !ok {
+	if ReClaudeFrom(ctx) {
+		q.Name, q.Plan = "ReClaude", "ReClaude"
+	} else if _, _, ok := claudeCredential(); !ok {
 		q.Error = "Claude Code is signed out; run claude auth login"
 		return q
 	}
-	_, plan, _ := claudeIdentity()
-	q.Plan = plan
+	if !ReClaudeFrom(ctx) {
+		_, q.Plan, _ = claudeIdentity()
+	}
 	var err error
 	q.Windows, err = claudeWindows(ctx, user, true)
 	if err != nil {
@@ -757,6 +770,11 @@ func AskUsage() {
 // what was kept.
 // magpie itself never asks Anthropic.
 func claudeWindows(ctx context.Context, user string, active bool) ([]QuotaWindow, error) {
+	if ReClaudeFrom(ctx) {
+		if _, err := ReClaudeBinary(ctx); err != nil {
+			return nil, err
+		}
+	}
 	key := strings.ToLower(user)
 	c := &claudeUsage
 	now := time.Now()
@@ -806,7 +824,7 @@ func claudeWindows(ctx context.Context, user string, active bool) ([]QuotaWindow
 		}
 		return []QuotaWindow{}, errClaudeNotAsked
 	}
-	if active && ClaudeCodeMovedOff(user) {
+	if active && !ReClaudeFrom(ctx) && ClaudeCodeMovedOff(user) {
 		return kept()
 	}
 	var ws []QuotaWindow
@@ -816,7 +834,7 @@ func claudeWindows(ctx context.Context, user string, active bool) ([]QuotaWindow
 	} else {
 		ws, err = readSavedClaudeUsage(ctx, user)
 	}
-	if active && ClaudeCodeMovedOff(user) {
+	if active && !ReClaudeFrom(ctx) && ClaudeCodeMovedOff(user) {
 		return kept()
 	}
 	if err != nil {
@@ -834,7 +852,7 @@ func claudeWindows(ctx context.Context, user string, active bool) ([]QuotaWindow
 			e = f // headers received while /usage ran are newer than e
 		}
 		c.Unlock()
-		if e.ws != nil && time.Since(e.heard) < claudeHeard && !claudeUsageDenied.MatchString(err.Error()) {
+		if !ReClaudeFrom(ctx) && e.ws != nil && time.Since(e.heard) < claudeHeard && !claudeUsageDenied.MatchString(err.Error()) {
 			return e.windows(time.Now()), nil // a fresh header stands unless the account was refused
 		}
 		return ws, err

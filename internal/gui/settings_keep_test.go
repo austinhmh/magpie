@@ -179,6 +179,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		GatewayMode:          "off",
 		QuotaReads:           "asked",
 		NoAccountDiscovery:   true,
+		ReClaude:             true,
 		RedactModel:          true,
 	}
 	was.DesktopSubagentEffort = "high"

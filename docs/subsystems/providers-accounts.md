@@ -9,6 +9,18 @@ The gateway can send a request to three kinds of upstream:
 Package `internal/provider` holds all three, the routing groups built over
 them, and what is left of each one's allowance.
 
+`magpie accounts reclaude on` or the Providers page can opt this computer in
+to a local ReClaude source for the existing `claude` provider id. With it on,
+only a synthetic ReClaude account is offered, with no OAuth credential copied
+or saved; Claude Code's own accounts and saved logins remain untouched and
+return when it is off. Account discovery off overrides this choice. Unknown
+settings do not permit falling back to a personal Claude account. A stopped
+daemon produces an explicit failure rather than a fallback; its allowance is
+read through `reclaude -p /usage`, never from a personal account. The source
+is kept local by `Settings.KeepOwn` and is off by default. Existing `claude/*`
+model ids change account source while enabled, so a shared gateway key can
+spend its allowance too.
+
 Plugin ownership of the deprecated built-in subscriptions is in
 [Provider and plugin ownership](provider-plugins.md). How the gateway orders
 keys and accounts per request is in [Gateway routing and fallback](gateway-routing.md).

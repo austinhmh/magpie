@@ -30,7 +30,31 @@ func accountsCmd(args []string) error {
 	if len(args) > 1 && args[1] == "discovery" {
 		return accountsDiscoveryCmd(args[2:])
 	}
-	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity|zed|factory|mimo|<plugin>] [--json] | magpie accounts add <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> | magpie accounts add copilot [--host <name>.ghe.com] | magpie accounts import <codex|claude|antigravity|factory> <file>... [--yes] | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> <email> | magpie accounts switch|forget copilot <login>[@<name>.ghe.com] [--host <name>.ghe.com] | magpie accounts project <gemini|antigravity> <email> <gcp-project-id> | magpie accounts alias <agent|<plugin>> <email> [<name>|--clear] | magpie accounts switch-only codex [on|off]"
+	if len(args) > 1 && args[1] == "reclaude" {
+		if len(args) > 3 {
+			return fmt.Errorf("usage: magpie accounts reclaude [on|off]")
+		}
+		if len(args) == 3 {
+			switch args[2] {
+			case "on", "off":
+				if err := provider.SetReClaude(args[2] == "on"); err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("usage: magpie accounts reclaude [on|off]")
+			}
+		}
+		state := provider.ReClaudeStatus()
+		if state.Why != "" {
+			fmt.Println("ReClaude:", state.Why)
+		} else if state.Ready {
+			fmt.Println("ReClaude: on, local daemon ready (Claude Code accounts kept but not used)")
+		} else {
+			fmt.Println("ReClaude: off (Claude Code accounts unchanged)")
+		}
+		return nil
+	}
+	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity|zed|factory|mimo|<plugin>] [--json] | magpie accounts reclaude [on|off] | magpie accounts add <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> | magpie accounts add copilot [--host <name>.ghe.com] | magpie accounts import <codex|claude|antigravity|factory> <file>... [--yes] | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> <email> | magpie accounts switch|forget copilot <login>[@<name>.ghe.com] [--host <name>.ghe.com] | magpie accounts project <gemini|antigravity> <email> <gcp-project-id> | magpie accounts alias <agent|<plugin>> <email> [<name>|--clear] | magpie accounts switch-only codex [on|off]"
 	agentID := func(s string) (string, error) {
 		switch strings.ToLower(s) {
 		case "claude", "cc":

@@ -276,6 +276,9 @@ type Settings struct {
 	// as by default, subscriptions are found as ever. This computer's own
 	// (KeepOwn), set only by its own switch or `magpie accounts discovery`.
 	NoAccountDiscovery bool `json:"noAccountDiscovery,omitempty"`
+	// ReClaude uses this computer's local launcher in place of Claude Code's
+	// own sign-in for magpie's Claude subscription. It is off by default.
+	ReClaude bool `json:"reclaude,omitempty"`
 	// NoStats stops the one event a day that counts magpie's users (see
 	// internal/stats).
 	NoStats bool `json:"noStats,omitempty"`
@@ -1029,6 +1032,7 @@ func (s *Settings) KeepOwn(cur Settings) {
 	s.NoWSLAgents = cur.NoWSLAgents
 	s.QuotaReads = cur.QuotaReads
 	s.NoAccountDiscovery = cur.NoAccountDiscovery
+	s.ReClaude = cur.ReClaude
 	s.LAN, s.AllowIPs = cur.LAN, cur.AllowIPs
 	s.FetchPrivate = cur.FetchPrivate
 	s.SessionTerminal = cur.SessionTerminal

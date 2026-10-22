@@ -43,9 +43,10 @@ import (
 
 // Account is the signed-in agent behind a provider.
 type Account struct {
-	Agent string `json:"agent"`          // the agent's id: codex, copilot
-	User  string `json:"user"`           // who is signed in: an email, a GitHub login
-	Plan  string `json:"plan,omitempty"` // the subscription, when the agent says
+	Agent    string `json:"agent"`              // the agent's id: codex, copilot
+	User     string `json:"user"`               // who is signed in: an email, a GitHub login
+	Plan     string `json:"plan,omitempty"`     // the subscription, when the agent says
+	ReClaude bool   `json:"reclaude,omitempty"` // local Claude source, never a saved OAuth account
 
 	// Stream is set when the backend only streams; magpie then translates
 	// a non-streaming request instead of relaying it.
@@ -757,6 +758,16 @@ func withoutClaudeWiring(env []string) []string {
 }
 
 func claudeAccount() (Provider, bool) {
+	if discoveryOff() {
+		return Provider{}, false
+	}
+	selected, err := ReClaudeEnabled()
+	if err != nil {
+		return Provider{}, false // unknown source: neither login is safe to assume
+	}
+	if selected {
+		return reClaudeAccount(), true
+	}
 	c, _, ok := claudeCredential()
 	if !ok {
 		return claudeStandInAccount()

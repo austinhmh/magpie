@@ -31,6 +31,11 @@ func SetLoginOn(agent, user string, on bool) error {
 	if discoveryOff() {
 		return errAccountDiscoveryOff
 	}
+	if agent == "claude" {
+		if err := personalClaudeAvailable(); err != nil {
+			return err
+		}
+	}
 	if pp, ok := pluginOfAgent(agent); ok {
 		return setPluginLoginOn(pp, user, on)
 	}
@@ -103,6 +108,9 @@ func pausedOwn(ls []savedLogin, agent, user string) bool {
 // is signed in to, paused while another of its accounts is on (#263): the
 // gateway passes over it, the agent staying signed in to it.
 func (p Provider) OwnPaused() bool {
+	if p.Account != nil && p.Account.ReClaude {
+		return false
+	}
 	if p.Account == nil || p.Account.token != nil && !p.Account.standIn || !slices.Contains(loginAgents, p.Account.Agent) {
 		return false
 	}
@@ -129,6 +137,9 @@ func (p Provider) AlsoOn() []Provider {
 // alsoOn is AlsoOn as each sign-in makes its accounts, without the
 // provider's settings.
 func (p Provider) alsoOn() []Provider {
+	if p.Account != nil && p.Account.ReClaude {
+		return nil
+	}
 	if p.IsPlugin() {
 		return pluginAlsoOn(*p.Account.plugin)
 	}
@@ -179,6 +190,15 @@ func (p Provider) alsoOn() []Provider {
 func (a *Account) Token(ctx context.Context) (tok string, ok bool, err error) {
 	if a == nil {
 		return "", false, nil
+	}
+	if a.ReClaude {
+		_, err := ReClaudeBinary(ctx)
+		return "", false, err
+	}
+	if a.Agent == "claude" {
+		if err := personalClaudeAvailable(); err != nil {
+			return "", false, err
+		}
 	}
 	if a.token == nil {
 		if a.Agent == "claude" {

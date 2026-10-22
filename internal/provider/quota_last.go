@@ -63,6 +63,12 @@ func keepLast(q SubscriptionQuota, user string) SubscriptionQuota {
 	if user == "" || q.Provider == "" {
 		return q
 	}
+	if q.Provider == "claude" && user == reClaudeUser {
+		selected, err := ReClaudeEnabled()
+		if err != nil || !selected || (q.Error != "" && !readDeferred(q.Error)) {
+			return q // a failed local read cannot borrow an earlier daemon's allowance
+		}
+	}
 	key := q.Provider + "/" + strings.ToLower(user)
 	c := &lastQuotas
 	c.Lock()
