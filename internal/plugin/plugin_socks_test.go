@@ -122,9 +122,15 @@ func TestPluginSOCKSProxy(t *testing.T) {
 	}
 	// through a SOCKS proxy that is down, the bridge answers as Go's
 	// transport fails: a 502 saying "socks connect", which the gateway
-	// takes for the proxy's failure
+	// takes for the proxy's failure. Bun 1.4.3 and later no longer hand a
+	// tunnel's 502 back as a reply (ERR_PROXY_TUNNEL), and proxyRefuses
+	// then says it as "proxyconnect tcp: 502 Bad Gateway: socks connect …":
+	// the gateway's proxyDown reads either as the proxy's failure.
 	for _, url := range []string{"http://vendor.invalid/v1/chat/completions", "https://vendor.invalid/v1/chat/completions"} {
-		if code, b, err := fetch(deadSOCKS, url); err != nil || code != 502 || !strings.HasPrefix(b, "socks connect tcp 127.0.0.1:") {
+		code, b, err := fetch(deadSOCKS, url)
+		replied := err == nil && code == 502 && strings.HasPrefix(b, "socks connect tcp 127.0.0.1:")
+		thrown := err != nil && strings.HasPrefix(err.Error(), "proxyconnect tcp: 502 Bad Gateway: socks connect tcp 127.0.0.1:")
+		if !replied && !thrown {
 			t.Fatalf("%s through a SOCKS proxy that is down: %d %q, %v", url, code, b, err)
 		}
 	}
