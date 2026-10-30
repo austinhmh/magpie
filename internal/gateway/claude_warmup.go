@@ -29,9 +29,13 @@ func claudeProxy(ctx context.Context) string {
 // warmClaude sends a Claude account one "hi" through Claude Code, as the
 // bridge runs it (claudeCLIArgs): none of its tools, settings or MCP
 // servers, nothing kept on disk, at Haiku, the least an account's window
-// is started by. configDir is a saved account's config directory, "" for
-// the one Claude Code is signed in to.
+// is started by; the ReClaude source's keep-alive asks Sonnet, as its user
+// chose. configDir is a saved account's config directory, "" for the one
+// Claude Code is signed in to.
 func warmClaude(ctx context.Context, configDir string) error {
+	if provider.ReClaudeFrom(ctx) {
+		return askClaude(ctx, configDir, "sonnet") // ReClaude source: Sonnet keep-alive through the reclaude launcher
+	}
 	return askClaude(ctx, configDir, "haiku")
 }
 

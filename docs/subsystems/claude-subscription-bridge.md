@@ -12,8 +12,12 @@ provider instead starts the installed `reclaude` launcher. At the entry to
 `serveClaudeSubscription`, `Account.Token` checks the selected source before
 either a new turn or tool results can reach an existing run. The shared
 `provider.ReClaudeBinary` check finds the launcher and checks daemon status
-with the caller's context and a five-second timeout; the UI maps that same
-check to its on/ready/reason fields. A new subprocess checks again after
+with the caller's context and a five-second timeout. It uses
+`reclaude status --check --json` for a verified, reachable daemon, falling
+back to older launchers' `daemon_running` and `daemon_reachable` fields.
+A plain current-version `reclaude status` is only an unverified snapshot;
+it cannot prove the daemon is reachable. The UI maps the same check to
+its on/ready/reason fields. A new subprocess checks again after
 waiting for a process slot, so a disabled source is not started from a
 queued request. A failure never falls through to a personal Claude account.
 Model probes and allowance reads use the same launcher and a per-call

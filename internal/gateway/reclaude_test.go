@@ -242,3 +242,26 @@ done
 		t.Fatalf("a stopped daemon must refuse even an existing run: %d %s", status, responseError)
 	}
 }
+
+func TestReClaudeWarmUpAsksSonnet(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake launcher is a shell script")
+	}
+	fresh(t)
+	t.Setenv("MAGPIE_NO_ACCOUNTS", "")
+	launcherDirectory := t.TempDir()
+	modelFile := filepath.Join(launcherDirectory, "model")
+	t.Setenv("FAKE_RECLAUDE_MODEL", modelFile)
+	testenv.Program(t, filepath.Join(launcherDirectory, "reclaude"), "#!/bin/sh\nif [ \"$1\" = status ]; then printf 'daemon_running: true\\ndaemon_reachable: true\\n'; exit 0; fi\nprintf '%s' \"$5\" > \"$FAKE_RECLAUDE_MODEL\"\necho '{\"type\":\"result\",\"is_error\":false,\"result\":\"OK\"}'\n")
+	t.Setenv("PATH", launcherDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := provider.SetReClaude(true); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = provider.SetReClaude(false) })
+	if err := warmClaude(provider.WithReClaude(t.Context()), ""); err != nil {
+		t.Fatal(err)
+	}
+	if model, _ := os.ReadFile(modelFile); string(model) != "sonnet" {
+		t.Fatalf("ReClaude keep-alive asked %q, want sonnet", model)
+	}
+}

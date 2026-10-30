@@ -19,7 +19,9 @@ daemon produces an explicit failure rather than a fallback; its allowance is
 read through `reclaude -p /usage`, never from a personal account. The source
 is kept local by `Settings.KeepOwn` and is off by default. Existing `claude/*`
 model ids change account source while enabled, so a shared gateway key can
-spend its allowance too.
+spend its allowance too. Settings' Claude times of day send it one Sonnet
+keep-alive each, unconditionally, starting a stopped daemon first; that is
+the only path that starts it ([reclaude-local-bridge.md](../reclaude-local-bridge.md)).
 
 Plugin ownership of the deprecated built-in subscriptions is in
 [Provider and plugin ownership](provider-plugins.md). How the gateway orders
