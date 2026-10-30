@@ -1227,6 +1227,19 @@ Claude Code's other fallback, on overload (529), needs
 `--fallback-model`, which the bridge doesn't pass, as Claude Code itself
 doesn't by default; that path is unchanged.
 
+## An attempt cut short (#726)
+
+Claude Code asks again when Anthropic's stream is cut short (a dropped
+connection, `ECONNRESET`), each time with the whole prompt. The reply goes
+on in the attempt that answers (`readOutput`'s `cut`). The client is told
+that attempt's usage as the prompt: a client that reads the prompt as its
+context (Cursor++'s auto-compaction) saw the attempts' sum, 663,939 tokens
+where 173,988 were used. What the attempts cut short cost is the reply's
+`Usage.Deferred`: billed and priced as a tier of its own (`billed`,
+`routeUsage`), never told. A continuation after Claude Code's own call
+(`inside`) is part of the reply and is still added to what the client is
+told.
+
 ## The account's allowance on the reply (#1257)
 
 Claude Code tells a run's account allowance in its stream-json
@@ -1286,3 +1299,7 @@ go test -tags nogui ./internal/gateway/ -run 'TestClaudeTaskNotification|TestWit
 rule that keeps another conversation out; `claude_lost_media_test.go` does
 the same for images taken out, from Hana's request bodies. `claude_resume_test.go`'s harness
 stands in for Claude Code with a script that keeps sessions as it does.
+`claude_cut_stream_test.go`'s `TestClaudeCutStreamTellsTheAnsweringPrompt`
+replays the reporter's three dropped attempts and checks what the client
+is told and what the request is billed for
+(`go test -tags nogui ./internal/gateway/ -run 'ClaudeCutStream' -count=1`).

@@ -128,7 +128,7 @@ func TestClaudeRefusalFallbackAnswers(t *testing.T) {
 		"tui":   {append([]string{tuiRefused}, tuiAnswer...), "Partial FALLBACK ANSWER from claude-opus-4-8"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			text, stop, _, _, raw, ended, ok := claudeReply(t, &subscriptionRun{}, c.lines, true)
+			text, stop, _, _, _, _, raw, ended, ok := claudeReply(t, &subscriptionRun{}, c.lines, true)
 			if text != c.text || stop != "end_turn" || ended != "stop" || !ok {
 				t.Fatalf("reply %q stop %q, run ended %q %v:\n%s", text, stop, ended, ok, raw)
 			}
@@ -165,7 +165,7 @@ func TestClaudeRefusalWithNoFallback(t *testing.T) {
 		"tui":   append([]string{tuiRefused}, tuiNoFallback...),
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, stop, _, _, raw, ended, _ := claudeReply(t, &subscriptionRun{}, lines, true)
+			_, stop, _, _, _, _, raw, ended, _ := claudeReply(t, &subscriptionRun{}, lines, true)
 			if stop != "refusal" || ended != "filter" || !strings.Contains(raw, `"category":"cyber"`) {
 				t.Fatalf("stop %q, run ended %q:\n%s", stop, ended, raw)
 			}
@@ -181,7 +181,7 @@ func TestClaudeRefusalWithNoFallback(t *testing.T) {
 func TestClaudeRefusalRetryFails(t *testing.T) {
 	lines := append(append([]string{}, refusedAttempt[:7]...),
 		`{"type":"result","subtype":"error_during_execution","is_error":true,"api_error_status":429,"result":"API Error: 429 rate limited"}`)
-	_, stop, _, _, raw, _, ok := claudeReply(t, &subscriptionRun{}, lines, true)
+	_, stop, _, _, _, _, raw, _, ok := claudeReply(t, &subscriptionRun{}, lines, true)
 	if stop == "end_turn" || ok || !strings.Contains(raw, "429 rate limited") {
 		t.Fatalf("stop %q ok %v:\n%s", stop, ok, raw)
 	}

@@ -3005,12 +3005,20 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	// what the messages before cost, as each message's usage counts only
 	// itself and the client keeps the last it is told
 	var before, this Usage
-	var lateUsage cliUsage    // a message left out as told by its call (onCall)
+	var lateUsage cliUsage // a message left out as told by its call (onCall)
+	// what attempts cut short cost: Claude Code asked their prompt again,
+	// so it is billed with the reply (Deferred), never told as its prompt
+	var retried Usage
 	var reqID, errKind string // the last request's id, and how it failed
 	usage := func(u cliUsage) Usage {
 		v := u.gateway()
 		this.add(v)
-		return v.carryUpdate(this, before)
+		v = v.carryUpdate(this, before)
+		if retried != (Usage{}) {
+			spent := retried
+			v.Deferred = &spent
+		}
+		return v
 	}
 	// A stream Anthropic cut short (a dropped connection, a stall) Claude
 	// Code ends with a message_stop of its own and no message_delta, and
@@ -3123,11 +3131,20 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	begin := func(id, model string, u cliUsage) {
 		own, theirs, stopped, shown = map[int]bool{}, false, false, false
 		if inside || cut {
+			// an attempt cut short read the same prompt again: it is billed
+			// with the reply (retried), never told as its prompt
+			if cut {
+				retried = retried.plus(this, false)
+			} else {
+				before = before.plus(this, false)
+			}
+			newPrompt := cut
 			inside, cut, refused, refusedDetails = false, false, false, nil
-			before, this = before.plus(this, false), Usage{}
+			this = Usage{}
 			// Claude Code's fallback model answering: a reply told
 			// whole names it; a stream named its model as it began
 			v := usage(u)
+			v.newPrompt = newPrompt
 			if model == replyModel {
 				model = ""
 			}
@@ -3136,7 +3153,7 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			return
 		}
 		replyModel = model
-		before, this = lateUsage.gateway(), Usage{}
+		before, this, retried = lateUsage.gateway(), Usage{}, Usage{}
 		lateUsage = cliUsage{}
 		calls, retold = textCalls{}, false
 		r.mu.Lock()

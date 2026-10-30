@@ -451,6 +451,10 @@ type Usage struct {
 	// provider's own tool (searchTally), for the request log's Web search
 	// rows; told nowhere else
 	searches int
+	// newPrompt says this update is a new prompt's whole count (an attempt
+	// asked again after one cut short), zeros included: add takes its four
+	// prompt counts as they are. Never kept or accumulated.
+	newPrompt bool
 
 	Reasoning int `json:"reasoning"`
 	// Served: the model the vendor's reply says answered, when it named
@@ -513,6 +517,10 @@ func (u Usage) prompt() int {
 }
 
 func (u *Usage) add(v Usage) {
+	if v.newPrompt {
+		// a zero is a count here: the attempt read its whole prompt from the cache
+		u.Input, u.CacheRead, u.CacheWrite, u.CacheWrite1h = v.Input, v.CacheRead, v.CacheWrite, v.CacheWrite1h
+	}
 	if v.Input > 0 {
 		u.Input = v.Input
 	}
