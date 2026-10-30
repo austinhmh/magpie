@@ -265,3 +265,30 @@ func TestReClaudeWarmUpAsksSonnet(t *testing.T) {
 		t.Fatalf("ReClaude keep-alive asked %q, want sonnet", model)
 	}
 }
+
+// With ReClaude on, every Claude run is -p whatever the interactive mode's
+// switch says: ReClaude's launcher has only been run as -p, and under the
+// interactive mode (claudeTUIOn) a -p run is refused and never reused, so
+// each of a conversation's turns would start a Claude Code anew.
+func TestReClaudeRunsAsPrint(t *testing.T) {
+	was := claudeTUIRuns
+	claudeTUIRuns = true
+	t.Cleanup(func() { claudeTUIRuns = was })
+	t.Cleanup(func() { _ = provider.SetReClaude(false) })
+	binary := claudeCLI{path: "/usr/local/bin/reclaude"}
+	if !claudeTUIOn() {
+		t.Fatal("the interactive mode is off with ReClaude off")
+	}
+	if err := provider.SetReClaude(true); err != nil {
+		t.Fatal(err)
+	}
+	if claudeTUIOn() {
+		t.Fatal("the interactive mode is on with ReClaude on")
+	}
+	if code, _ := claudeMachineWhy(binary); code != "reclaude" {
+		t.Fatalf("claudeMachineWhy says %q, want reclaude", code)
+	}
+	if tui, code := claudeTUI(&Request{}, binary); tui || code != "reclaude" {
+		t.Fatalf("claudeTUI says %v %q, want -p for reclaude", tui, code)
+	}
+}

@@ -1189,6 +1189,23 @@ Discord: Claude Desktop on Fable 5.1 got
   words reach the client as written. A run with no input to write to, or a
   reply that called the client's tools too (the text is left out), is
   not asked.
+- A turn whose request went out without the client's tools: Claude Code
+  2.1.310 sends its MCP servers a `server/discover` probe first, and now
+  and then that closed magpie's helper ("rmcp-class pre-init hard close"
+  in its MCP log), so the turn's `system/init` said
+  `mcp_servers: [{name: magpie, status: failed}]` and `tools: []`. Offered
+  no tool, Opus 5.5 in Cursor wrote `<invoke name="Shell">` markup with
+  the client's own name (10-31 01:01), held back as any such line is. On
+  such an init (`mcpDown`) `readOutput` asks Claude Code to connect the
+  helper again (`mcp_reconnect`, `reconnectMCP`) and tells the run
+  `textCallsAsk` only once the reconnect is answered (`askForCalls`, at
+  most `mcpReconnectLongest`), so that request offers the tools. A model
+  that keeps writing calls as text without ending its turn (one wrote the
+  same call for two minutes) is interrupted past `textCallsMost` held
+  bytes; its `aborted_streaming` result ends nothing, and the reply goes
+  on in the asked turn. A helper that can't start at all (macOS holding
+  magpie's own executable at launch, 11-01) fails the reconnect too, and
+  the words then reach the client as written.
 
 ## A refusal Claude Code goes on from (Chixi_Fang on X)
 
@@ -1291,7 +1308,7 @@ go test -tags nogui ./internal/gateway/ -run 'TestClaudeRunsHeldToTheRoom|TestCl
 go test -tags nogui ./internal/cli/ -run '^TestClaudeCodeRuns' -count=1
 go test -tags nogui ./internal/gateway/ -run '^TestClaudeRunsNamesEachProcess$' -count=1
 go test -tags nogui ./internal/settings/ -run '^TestClaudeRunsMostIsMachineLocal$' -count=1
-go test -tags nogui ./internal/gateway/ -run 'ClaudeSubscriptionRunsTheDownloaded|ClaudeSubscriptionWithoutClaudeCode|ClaudeRewritten|LostMedia|ImagesTakenOut|RunLetGoWhenTheClientRewrote|ClaudeSessionTempFiles|ClaudeLetGo|ClaudeSessionFiles|ClaudeOldSessions|ClaudeSubscriptionReplySaysTheAllowance|ClaudeAllowanceHeaders|ClaudeForksAnsweringTheLeadsCalls|ClaudeTurnGivenUpOn|ClaudeToolResultsGivenUpOn|ClaudePromptMarksEarlierTurns|ClaudeHistoryCachedAcrossNewRuns|ClaudeUnloadableSession|ClaudeEndedRunSaysWhy|ClaudeIdle|ClaudeSideQuestion|ClaudeInteractiveSideQuestion|ClaudeCutSession|ClaudeForkBranches|ClaudeToolChoiceNone|ClaudeAside|ClaudeNoRunSaysWhy|ClaudeToolResultsNoRunSaysWhy|ClaudePromptToldUserText|ClaudePromptKeepsInstructions|ClaudeToolResultsGoOnWithTheUsersWords|ClaudeToolResultsKeepInstructions|ToolResultKeepsUserTextSentMidTurn|ClaudeTextToolCalls|ClaudeTextCallsHoldsOnlyTheLine|ClaudePromptSaysPastCallsAreARecord' -count=1
+go test -tags nogui ./internal/gateway/ -run 'ClaudeSubscriptionRunsTheDownloaded|ClaudeSubscriptionWithoutClaudeCode|ClaudeRewritten|LostMedia|ImagesTakenOut|RunLetGoWhenTheClientRewrote|ClaudeSessionTempFiles|ClaudeLetGo|ClaudeSessionFiles|ClaudeOldSessions|ClaudeSubscriptionReplySaysTheAllowance|ClaudeAllowanceHeaders|ClaudeForksAnsweringTheLeadsCalls|ClaudeTurnGivenUpOn|ClaudeToolResultsGivenUpOn|ClaudePromptMarksEarlierTurns|ClaudeHistoryCachedAcrossNewRuns|ClaudeUnloadableSession|ClaudeEndedRunSaysWhy|ClaudeIdle|ClaudeSideQuestion|ClaudeInteractiveSideQuestion|ClaudeCutSession|ClaudeForkBranches|ClaudeToolChoiceNone|ClaudeAside|ClaudeNoRunSaysWhy|ClaudeToolResultsNoRunSaysWhy|ClaudePromptToldUserText|ClaudePromptKeepsInstructions|ClaudeToolResultsGoOnWithTheUsersWords|ClaudeToolResultsKeepInstructions|ToolResultKeepsUserTextSentMidTurn|ClaudeTextToolCalls|ClaudeTextCallsHoldsOnlyTheLine|ClaudeCallsWrittenWithoutTools|ClaudeRunawayTextCalls|ClaudePromptSaysPastCallsAreARecord' -count=1
 go test -tags nogui ./internal/gateway/ -run 'TestClaudeTaskNotification|TestWithTaskNotices|TestClaudeTurnToldTheTaskNotification' -count=1
 ```
 

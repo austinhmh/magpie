@@ -242,6 +242,9 @@ type subscriptionRun struct {
 	backKey   string
 	rewinding chan struct{}
 	controls  map[string]chan controlReply
+	// reconnecting is closed once Claude Code has answered magpie's
+	// mcp_reconnect of its helper (reconnectMCP), under r.mu
+	reconnecting chan struct{}
 	// behindKey and behindTurn are backKey and turnUUID of the turn it
 	// last answered whole, while it waits for the next (b.mu): a request
 	// that goes on from before that turn takes it back to there (resume).
@@ -1443,6 +1446,104 @@ func claudeTUIErr(why string) error {
 type tuiRefusal struct{ error }
 
 func (e *tuiRefusal) Unwrap() error { return e.error }
+
+// textCallsMost is how much of a reply written as tool calls in text is held
+// before the reply is interrupted (said): a model offered no tools wrote
+// the same call 300 times without ending its turn.
+const textCallsMost = 16 << 10
+
+// askForCalls tells the run to make the calls its reply wrote as text
+// (textCallsAsk). When magpie's helper was down it is told once Claude
+// Code has connected it again (reconnectMCP), off the reader, which reads
+// that answer: told sooner, its next request still went out with no tools.
+// It is called by the reader, holding pmu; inside is the reader's, set
+// under pmu by a tell that fails later.
+func (r *subscriptionRun) askForCalls(pmu *sync.Mutex, inside *bool, reqID string) {
+	ask, _ := json.Marshal(map[string]any{"type": "user", "uuid": newUUID(), "message": map[string]any{"role": "user",
+		"content": []map[string]any{{"type": "text", "text": textCallsAsk}}}})
+	tell := func(locked bool) {
+		if err := r.tell(ask); err != nil {
+			if !locked {
+				pmu.Lock()
+				defer pmu.Unlock()
+			}
+			*inside = false
+			r.emit(Event{Kind: KError, Text: "Claude Code could not be told to make the tool calls its reply wrote as text: " + err.Error(), Status: http.StatusBadGateway, RequestID: reqID})
+			r.endSegment()
+		}
+	}
+	wait := r.mcpReconnecting()
+	if wait == nil {
+		tell(true)
+		return
+	}
+	go func() {
+		select {
+		case <-wait:
+		case <-time.After(mcpReconnectLongest):
+		}
+		tell(false)
+	}()
+}
+
+// mcpReconnectLongest is how long a run's ask to make the calls it wrote
+// as text waits for Claude Code to connect magpie's helper again.
+var mcpReconnectLongest = 15 * time.Second
+
+// mcpDown says how Claude Code's MCP connection to magpie's helper stands
+// on a turn's init, "" when it is up or the run has none: "failed" when it
+// closed (the server/discover probe Claude Code 2.1.310 sends first ended
+// it on 10-30, its log saying "rmcp-class pre-init hard close"), "pending"
+// while it connects. Either way the turn's request offered the model none
+// of the client's tools.
+func mcpDown(servers []struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}) string {
+	for _, s := range servers {
+		if s.Name == "magpie" && s.Status != "connected" {
+			return s.Status
+		}
+	}
+	return ""
+}
+
+// reconnectMCP asks Claude Code to connect magpie's helper again
+// (mcp_reconnect), once at a time, in the background; mcpReconnecting is
+// set before it returns, so the turn's end waits on it, and closed once
+// Claude Code has answered.
+func (r *subscriptionRun) reconnectMCP() {
+	r.mu.Lock()
+	if r.reconnecting != nil {
+		r.mu.Unlock()
+		return
+	}
+	done := make(chan struct{})
+	r.reconnecting = done
+	r.mu.Unlock()
+	go func() {
+		defer func() {
+			r.mu.Lock()
+			r.reconnecting = nil
+			r.mu.Unlock()
+			close(done)
+		}()
+		if err := r.cliControl(map[string]any{"subtype": "mcp_reconnect", "serverName": "magpie"}); err != nil {
+			log.Printf("claude: Claude Code did not connect magpie's MCP helper again: %v", err)
+		}
+	}()
+}
+
+// mcpReconnecting is closed once a reconnect under way has been answered;
+// nil when none is.
+func (r *subscriptionRun) mcpReconnecting() <-chan struct{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.reconnecting == nil {
+		return nil
+	}
+	return r.reconnecting
+}
 
 // cliControl shares the SDK reply dispatcher with rewind, so unrelated or
 // late control responses cannot acknowledge a safety-context update.
@@ -3048,9 +3149,11 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	// message, as after Claude Code's own call. Only once a reply: told
 	// again, the words go to the client as written.
 	var calls textCalls
-	retell := false    // the run is told to make its calls once this turn's result is in
-	retold := false    // this reply was told so
-	var pmu sync.Mutex // held for each line, and by quiet's settle
+	retell := false      // the run is told to make its calls once this turn's result is in
+	retold := false      // this reply was told so
+	stopping := false    // magpie interrupted a reply that kept writing calls as text (textCallsMost)
+	interrupted := false // that interrupt's own result is still to come: it ends nothing
+	var pmu sync.Mutex   // held for each line, and by quiet's settle
 	var quiet *time.Timer
 	text := func(s string) {
 		if s != "" && !r.schema {
@@ -3058,7 +3161,19 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			r.emit(Event{Kind: KText, Text: s})
 		}
 	}
-	said := func(s string) { text(calls.push(s)) }
+	said := func(s string) {
+		text(calls.push(s))
+		// Offered no tools, a model wrote the same call as text over and
+		// over, 60 KB in two minutes, never ending its turn (10-31, in a
+		// test of the helper failing): past textCallsMost the reply is
+		// interrupted, and ends as one that wrote its calls as text.
+		// the interactive mode takes no control requests: only -p is stopped
+		if calls.seen && calls.held.Len() > textCallsMost && !stopping && !retold && r.stdin != nil && !r.tui {
+			stopping = true
+			log.Printf("claude: a reply kept writing tool calls as text (%d bytes held back); it is stopped and its run told to make them", calls.held.Len())
+			go func() { _ = r.cliControl(map[string]any{"subtype": "interrupt"}) }()
+		}
+	}
 	// what each message's end does, once its stop is known
 	end := func(why string) {
 		if goesOn := why != "" && r.schema && !theirs || why == "tool_use" && len(own) > 0 && !theirs; goesOn {
@@ -3129,7 +3244,7 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	// begin starts a message: the reply's first, or one it goes on in,
 	// after Claude Code's own call or an attempt cut short
 	begin := func(id, model string, u cliUsage) {
-		own, theirs, stopped, shown = map[int]bool{}, false, false, false
+		own, theirs, stopped, shown, stopping = map[int]bool{}, false, false, false, false
 		if inside || cut {
 			// an attempt cut short read the same prompt again: it is billed
 			// with the reply (retried), never told as its prompt
@@ -3248,7 +3363,14 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			IsError bool   `json:"is_error"`
 			// Claude Code's session, on its init message
 			SessionID string `json:"session_id"`
-			Result    string `json:"result"`
+			// and its MCP servers there: magpie's helper "connected", or
+			// "failed"/"pending" when this turn's request goes out with none
+			// of the client's tools (mcpDown)
+			MCPServers []struct {
+				Name   string `json:"name"`
+				Status string `json:"status"`
+			} `json:"mcp_servers"`
+			Result string `json:"result"`
 			// the answer fitting the schema, with --json-schema, and what
 			// went wrong in a turn that ended without one
 			StructuredOutput json.RawMessage `json:"structured_output"`
@@ -3357,6 +3479,16 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			r.mu.Lock()
 			r.sessionID = envelope.SessionID
 			r.mu.Unlock()
+			// Each turn's init says how magpie's helper stands. Down, the
+			// turn's request offers the model none of the client's tools,
+			// and it writes its calls out as text (`<invoke name="Shell">`,
+			// 10-31), held back as any such line is (textCallOpens): Claude
+			// Code is asked to connect the helper again, so the run's ask to
+			// make them (textCallsAsk) finds the tools there.
+			if down := mcpDown(envelope.MCPServers); down != "" {
+				log.Printf("claude: Claude Code's MCP connection to magpie is %s; this turn's request had none of the client's tools, so it is connected again", down)
+				r.reconnectMCP()
+			}
 			return
 		}
 		if envelope.Type == "rate_limit_event" {
@@ -3373,13 +3505,14 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			// is told to make them, and the reply goes on in its answer
 			retell = false
 			calls = textCalls{}
-			ask, _ := json.Marshal(map[string]any{"type": "user", "uuid": newUUID(), "message": map[string]any{"role": "user",
-				"content": []map[string]any{{"type": "text", "text": textCallsAsk}}}})
-			if err := r.tell(ask); err != nil {
-				inside = false
-				r.emit(Event{Kind: KError, Text: "Claude Code could not be told to make the tool calls its reply wrote as text: " + err.Error(), Status: http.StatusBadGateway, RequestID: reqID})
-				r.endSegment()
-			}
+			r.askForCalls(&pmu, &inside, reqID)
+			return
+		}
+		if envelope.Type == "result" && interrupted {
+			// the interrupted turn's own result (Claude Code tells one,
+			// empty, once it stopped): the reply goes on in the turn it was
+			// asked to make its calls in
+			interrupted = false
 			return
 		}
 		if envelope.Type == "result" {
@@ -3588,6 +3721,18 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 		case "message_stop":
 			switch {
 			case inside:
+			case stopping && !stopped:
+				// magpie interrupted it: it ends as a turn that wrote its
+				// calls as text, its run told to make them at its result
+				// (Claude Code tells none for an interrupt: the ask goes
+				// now, once the helper is back when it was down)
+				stopping = false
+				end("end_turn")
+				if retell {
+					retell, interrupted = false, true
+					calls = textCalls{}
+					r.askForCalls(&pmu, &inside, reqID)
+				}
 			case !stopped && shown:
 				// what the client was shown can't be taken back, nor
 				// the attempt's answer added to it: Claude Code's own
