@@ -1,0 +1,27 @@
+internal/gateway/claude_text_calls.go
+  s_4d14b2eb214fdb::t_1420cb352b2cf6 35,45-58,75,77,82
+  s_4d14b2eb214fdb::t_5f6a923437d03f 13-23,26
+docs/subsystems/claude-subscription-bridge.md
+  s_4d14b2eb214fdb::t_12766a7a31b04d 851
+  s_4d14b2eb214fdb::t_7b97cc8f1922f4 775-780
+internal/gateway/claude_text_calls_test.go
+  s_4d14b2eb214fdb::t_0d91742e90f1fb 168-169
+  s_4d14b2eb214fdb::t_e0a09b9d8bb2e6 229-242,244-250
+  s_4d14b2eb214fdb::t_aae5b4e03260d0 243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7ae702df14521c8ef7f43cb969429c9f74a13b4",
+  "prompts": {},
+  "sessions": {
+    "s_4d14b2eb214fdb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7419c61f-2f57-47da-a1f8-3789e6367d58",
+        "model": "model-k4a39l"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
