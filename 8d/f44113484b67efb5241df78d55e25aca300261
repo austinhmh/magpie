@@ -1,0 +1,23 @@
+internal/netproxy/login_test.go
+  s_4d14b2eb214fdb::t_b38a2ed6907eae 184-186,190
+  s_4d14b2eb214fdb::t_d56162963762fc 15
+internal/proc/disclaim_test.go
+  s_4d14b2eb214fdb::t_7fc03ce04f5056 48,52,54
+  s_4d14b2eb214fdb::t_1614a5e2446877 49-51,53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8df44113484b67efb5241df78d55e25aca300261",
+  "prompts": {},
+  "sessions": {
+    "s_4d14b2eb214fdb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7419c61f-2f57-47da-a1f8-3789e6367d58",
+        "model": "model-k4a39l"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
