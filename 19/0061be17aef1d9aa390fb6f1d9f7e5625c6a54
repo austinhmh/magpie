@@ -8,6 +8,9 @@ internal/gateway/ir.go
   s_4d14b2eb214fdb::t_f985e250f4c4c0 403-406,469-472
 internal/gateway/reasoning_state_anthropic_test.go
   s_4d14b2eb214fdb::t_3f31b0b09131fd 234
+internal/gateway/claude_text_calls_test.go
+  s_4d14b2eb214fdb::t_6fa067446265a7 100,141,237
+  s_4d14b2eb214fdb::t_7076f4225637a8 153
 ---
 {
   "schema_version": "authorship/3.0.0",
