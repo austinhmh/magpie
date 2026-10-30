@@ -1,0 +1,55 @@
+docs/subsystems/claude-subscription-bridge.md
+  s_4d14b2eb214fdb::t_1edd8f50e93fd1 867
+  s_4d14b2eb214fdb::t_599f6c749e8bba 789-804
+internal/gateway/claude_text_calls.go
+  s_4d14b2eb214fdb::t_18ea84716fe5d0 24-30
+  s_4d14b2eb214fdb::t_a686a79c41397c 49,55-60
+  s_4d14b2eb214fdb::t_72f1aa84175edd 87
+internal/gateway/claude_subscription.go
+  s_4d14b2eb214fdb::t_a3d5a6f7d6466d 2495-2501
+  s_4d14b2eb214fdb::t_39f430b68fb6d7 977-978
+  s_4d14b2eb214fdb::t_8e2088b3d7c826 2630
+  s_4d14b2eb214fdb::t_97714b1e9cfb70 984
+  s_4d14b2eb214fdb::t_da15269c0373f2 969-970,972-976,979-983,985-1006
+  s_4d14b2eb214fdb::t_152e551f624583 2372
+  s_4d14b2eb214fdb::t_a29717ff6f65ad 2381-2384,2386,2388-2392,2633
+  s_4d14b2eb214fdb::t_3080af3d87d3eb 2458
+  s_4d14b2eb214fdb::t_c80ad155ec0eb3 2634-2638
+  s_4d14b2eb214fdb::t_83f551c005b179 1007-1029,1033-1041,1052-1065
+  s_4d14b2eb214fdb::t_465a8b939b0b67 2821
+  s_4d14b2eb214fdb::t_0f931c6be05c9f 2631
+  s_4d14b2eb214fdb::t_a5a96e66bac5ec 2813-2820,2823-2824
+  s_4d14b2eb214fdb::t_9305002ad386da 2611
+  s_4d14b2eb214fdb::t_e2021e7a1b4c93 2602-2610,2612-2614
+  s_4d14b2eb214fdb::t_5a211822904272 2475
+  s_4d14b2eb214fdb::t_7101c2c410b4ff 1030-1032,1042-1051
+  s_4d14b2eb214fdb::t_30267f0e67374d 204-206
+  s_4d14b2eb214fdb::t_0ad0d67fa7fc97 2822
+  s_4d14b2eb214fdb::t_a88814ebd27ab1 968,971,2369-2371,2373,2385,2387,2502,2632
+internal/gateway/claude_mcp_down_test.go
+  s_4d14b2eb214fdb::t_9cb60542276066 135-137
+  s_4d14b2eb214fdb::t_99a435193532b1 1-4,6-29,32-41,44-46,50-53,59-91,100,104,112-128,130,139-141,146,150,154,162-163,166,169,175,179,181-183
+  s_4d14b2eb214fdb::t_8dbd7477bd1a33 92-99,170-174,180
+  s_4d14b2eb214fdb::t_aba12fd7d2ffe3 30-31,47-49,54,56-58
+  s_4d14b2eb214fdb::t_061762ed7307b4 101-103
+  s_4d14b2eb214fdb::t_b4a0c1a749dfff 105-111
+  s_4d14b2eb214fdb::t_60dc8cfc657c9a 55
+  s_4d14b2eb214fdb::t_a5990606f2cd57 155-160
+  s_4d14b2eb214fdb::t_9234db7e3a9f8c 5,42-43,129,131-134,138,142-145,147-149,151-153,161,164-165,167-168,176-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "986f1d6be795d007515043286b588a3a252f47c8",
+  "prompts": {},
+  "sessions": {
+    "s_4d14b2eb214fdb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7419c61f-2f57-47da-a1f8-3789e6367d58",
+        "model": "model-k4a39l"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
