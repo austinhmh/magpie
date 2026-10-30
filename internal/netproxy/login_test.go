@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/yetone/magpie/internal/settings"
+	"github.com/yetone/magpie/internal/testenv"
 )
 
 // The login Settings › Proxy saves (微雨南山 on Discord): a username and
@@ -180,14 +181,13 @@ func assertHidden(t *testing.T) {
 
 // Bun, which the plugin host's fetches and Claude Code run on, signs in
 // to an HTTP proxy with the same login: it decodes the userinfo as Go
-// does. Run when a bun is at hand ($MAGPIE_BUN or on PATH).
+// does. Run when a bun at least testenv.MinBun is on PATH (or $MAGPIE_BUN):
+// an older one puts :80 in the proxy's request line (#1600), which magpie
+// never runs plugins on, and failed here on a developer's Bun 1.3.8.
 func TestBunProxyLoginWithReservedCharacters(t *testing.T) {
 	bun := os.Getenv("MAGPIE_BUN")
 	if bun == "" {
-		bun, _ = exec.LookPath("bun")
-	}
-	if bun == "" {
-		t.Skip("no bun")
+		bun = testenv.Bun(t)
 	}
 	p := fakeHTTPProxy(t, loginUser, loginPass)
 	proxy := "http://" + loginUserEnc + ":" + loginPassEnc + "@" + strings.TrimPrefix(p.URL, "http://")

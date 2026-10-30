@@ -45,6 +45,13 @@ func TestCombinedOutputOwnAnswersForItself(t *testing.T) {
 	if self == 0 {
 		t.Skip("macOS doesn't say who is responsible for this process")
 	}
+	// A test run started by an app that disclaims its children (an editor's
+	// terminal or agent: Cursor's extension host; launchd's jobs too) is its
+	// own responsible process, and so is every orphan it leaves, plain or
+	// not: the plain case has nothing to tell apart there.
+	if self == os.Getpid() {
+		t.Skip("this process answers for itself, as the app that started the run disclaimed it: run it from Terminal")
+	}
 	// started the plain way, what is left running is this process's
 	// responsibility
 	if got := Responsible(startsLeft(t, (*exec.Cmd).CombinedOutput)); got != self {
