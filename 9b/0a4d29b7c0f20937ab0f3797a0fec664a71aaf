@@ -9,6 +9,7 @@ internal/settings/settings.go
   s_99fccf3403855d::t_e3423a0b89005c 366-368,1201
 internal/gateway/reclaude_test.go
   s_99fccf3403855d::t_e3423a0b89005c 1-46,47-48,51-244
+  s_4d14b2eb214fdb::t_4fbfa8334382b2 49-50
 internal/gui/api.go
   s_99fccf3403855d::t_e3423a0b89005c 1389
 docs/subsystems/gui-shell.md
@@ -67,6 +68,14 @@ internal/cli/main.go
   "base_commit_sha": "9b0a4d29b7c0f20937ab0f3797a0fec664a71aaf",
   "prompts": {},
   "sessions": {
+    "s_4d14b2eb214fdb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7419c61f-2f57-47da-a1f8-3789e6367d58",
+        "model": "model-k4a39l"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    },
     "s_99fccf3403855d": {
       "agent_id": {
         "tool": "cursor",
