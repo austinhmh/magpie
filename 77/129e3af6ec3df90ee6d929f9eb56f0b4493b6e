@@ -1,0 +1,19 @@
+internal/gui/tests/claude-mode.test.cjs
+  s_4d14b2eb214fdb::t_26d81da8c60028 43-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "77129e3af6ec3df90ee6d929f9eb56f0b4493b6e",
+  "prompts": {},
+  "sessions": {
+    "s_4d14b2eb214fdb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7419c61f-2f57-47da-a1f8-3789e6367d58",
+        "model": "model-k4a39l"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
