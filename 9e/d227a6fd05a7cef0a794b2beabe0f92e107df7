@@ -1,0 +1,35 @@
+internal/gateway/reclaude_test.go
+  s_4d14b2eb214fdb::t_a8ace3a3eb085a 272-275,277-281,302-323
+internal/settingsapi/settingsapi.go
+  s_4d14b2eb214fdb::t_ddebb6babbe765 36
+internal/plugin/plugin_gitupdate_test.go
+  s_4d14b2eb214fdb::t_d35d85501fa282 11-12
+  s_4d14b2eb214fdb::t_228b0e3ebba915 33-35
+internal/gateway/claude_subscription.go
+  s_4d14b2eb214fdb::t_bda204cdf10b51 951-952
+internal/cli/settings_parity_test.go
+  s_4d14b2eb214fdb::t_7ed8b3b8f1f634 150
+  s_4d14b2eb214fdb::t_eed48c5a7c0ab2 176
+internal/plugin/bunname_test.go
+  s_4d14b2eb214fdb::t_d4c24ebd83e050 64
+  s_4d14b2eb214fdb::t_2241bb8ae04a84 14-15
+docs/subsystems/claude-subscription-bridge.md
+  s_4d14b2eb214fdb::t_e40d602ff02ee6 293-296
+  s_4d14b2eb214fdb::t_4f6436183cdd7e 358-360
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ed227a6fd05a7cef0a794b2beabe0f92e107df7",
+  "prompts": {},
+  "sessions": {
+    "s_4d14b2eb214fdb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7419c61f-2f57-47da-a1f8-3789e6367d58",
+        "model": "model-k4a39l"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
