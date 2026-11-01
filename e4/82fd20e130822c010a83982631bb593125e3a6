@@ -1,0 +1,49 @@
+docs/subsystems/claude-subscription-bridge.md
+  s_4d14b2eb214fdb::t_599f6c749e8bba 1136-1141
+internal/gateway/claude_text_calls.go
+  s_4d14b2eb214fdb::t_18ea84716fe5d0 20
+internal/gateway/claude_subscription.go
+  s_4d14b2eb214fdb::t_a3d5a6f7d6466d 3298-3304
+  s_4d14b2eb214fdb::t_39f430b68fb6d7 1391-1392
+  s_4d14b2eb214fdb::t_97714b1e9cfb70 1398
+  s_4d14b2eb214fdb::t_da15269c0373f2 1383-1384,1386-1390,1393-1397,1399-1420
+  s_4d14b2eb214fdb::t_152e551f624583 3087
+  s_4d14b2eb214fdb::t_a29717ff6f65ad 3096-3099,3101,3104-3108,3442
+  s_4d14b2eb214fdb::t_3080af3d87d3eb 3179
+  s_4d14b2eb214fdb::t_c80ad155ec0eb3 3443-3447
+  s_4d14b2eb214fdb::t_83f551c005b179 1421-1443,1447-1455,1466-1479
+  s_4d14b2eb214fdb::t_465a8b939b0b67 3664
+  s_4d14b2eb214fdb::t_0f931c6be05c9f 3440
+  s_4d14b2eb214fdb::t_a5a96e66bac5ec 3656-3663,3666-3667
+  s_4d14b2eb214fdb::t_9305002ad386da 3422
+  s_4d14b2eb214fdb::t_e2021e7a1b4c93 3414-3415,3420,3421,3423
+  s_4d14b2eb214fdb::t_7101c2c410b4ff 1444-1446,1456-1465
+  s_4d14b2eb214fdb::t_30267f0e67374d 216-218
+  s_4d14b2eb214fdb::t_a88814ebd27ab1 1382,1385,3084-3086,3088,3100,3305,3441
+internal/gateway/claude_mcp_down_test.go
+  s_4d14b2eb214fdb::t_9cb60542276066 133-135
+  s_4d14b2eb214fdb::t_99a435193532b1 1-4,6-29,32-41,44-46,50-53,59-91,100,104,112-113,117-119,121,123-126,128,137-139,144,148,152,160-161,164,167,173,177,179-181
+  s_4d14b2eb214fdb::t_8dbd7477bd1a33 92-99,168-172,178
+  s_4d14b2eb214fdb::t_aba12fd7d2ffe3 30-31,47-49,54,56-58
+  s_4d14b2eb214fdb::t_061762ed7307b4 101-103
+  s_4d14b2eb214fdb::t_b4a0c1a749dfff 105-111
+  s_4d14b2eb214fdb::t_60dc8cfc657c9a 55
+  s_4d14b2eb214fdb::t_a5990606f2cd57 153-158
+  s_4d14b2eb214fdb::t_9234db7e3a9f8c 5,42-43,127,129-132,136,140-143,145-147,149-151,159,162-163,165-166,174-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e482fd20e130822c010a83982631bb593125e3a6",
+  "prompts": {},
+  "sessions": {
+    "s_4d14b2eb214fdb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7419c61f-2f57-47da-a1f8-3789e6367d58",
+        "model": "model-k4a39l"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
