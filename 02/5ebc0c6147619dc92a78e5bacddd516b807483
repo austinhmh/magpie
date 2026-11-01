@@ -7,6 +7,7 @@ internal/plugin/plugin_gitupdate_test.go
   s_4d14b2eb214fdb::t_228b0e3ebba915 33-35
 internal/gateway/claude_subscription.go
   s_4d14b2eb214fdb::t_bda204cdf10b51 1009
+  s_4d14b2eb214fdb::t_2d06df21bd6a24 1010
 internal/cli/settings_parity_test.go
   s_4d14b2eb214fdb::t_7ed8b3b8f1f634 150
   s_4d14b2eb214fdb::t_eed48c5a7c0ab2 176
@@ -17,6 +18,7 @@ docs/subsystems/claude-subscription-bridge.md
   s_4d14b2eb214fdb::t_e40d602ff02ee6 308-311
   s_4d14b2eb214fdb::t_4f6436183cdd7e 378
   s_4d14b2eb214fdb::t_b323edb11b190e 25-31
+  s_4d14b2eb214fdb::t_58d73062662d40 379
 ---
 {
   "schema_version": "authorship/3.0.0",
