@@ -1,5 +1,7 @@
 docs/subsystems/claude-subscription-bridge.md
   s_4d14b2eb214fdb::t_599f6c749e8bba 1136-1141
+  s_4d14b2eb214fdb::t_4e76a7bb5a9e3b 1142-1152
+  s_4d14b2eb214fdb::t_0fd5a27b9b883a 1255
 internal/gateway/claude_text_calls.go
   s_4d14b2eb214fdb::t_18ea84716fe5d0 20
 internal/gateway/claude_subscription.go
@@ -20,6 +22,9 @@ internal/gateway/claude_subscription.go
   s_4d14b2eb214fdb::t_7101c2c410b4ff 1444-1446,1456-1465
   s_4d14b2eb214fdb::t_30267f0e67374d 216-218
   s_4d14b2eb214fdb::t_a88814ebd27ab1 1382,1385,3084-3086,3088,3100,3305,3441
+  s_4d14b2eb214fdb::t_b5f684f7e88885 3416-3419
+  s_4d14b2eb214fdb::t_af913be6eb2ab9 3102-3103
+  s_4d14b2eb214fdb::t_48cafd75a1fdde 3665
 internal/gateway/claude_mcp_down_test.go
   s_4d14b2eb214fdb::t_9cb60542276066 133-135
   s_4d14b2eb214fdb::t_99a435193532b1 1-4,6-29,32-41,44-46,50-53,59-91,100,104,112-113,117-119,121,123-126,128,137-139,144,148,152,160-161,164,167,173,177,179-181
@@ -30,6 +35,10 @@ internal/gateway/claude_mcp_down_test.go
   s_4d14b2eb214fdb::t_60dc8cfc657c9a 55
   s_4d14b2eb214fdb::t_a5990606f2cd57 153-158
   s_4d14b2eb214fdb::t_9234db7e3a9f8c 5,42-43,127,129-132,136,140-143,145-147,149-151,159,162-163,165-166,174-176
+  s_4d14b2eb214fdb::t_d43f73da24c942 114-116,120,122
+internal/gateway/reclaude_test.go
+  s_4d14b2eb214fdb::t_b3dc3b46d8ab77 274-276
+  s_4d14b2eb214fdb::t_75d18acaf53815 268-273,277-294
 ---
 {
   "schema_version": "authorship/3.0.0",
