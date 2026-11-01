@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yetone/magpie/internal/testenv"
 )
 
 // The Bun magpie downloads is kept as magpie-bun, the name a proxy app's
@@ -59,10 +61,7 @@ func TestBunDownloadedBeforeTakesTheName(t *testing.T) {
 // The plugin host runs as magpie-bun: the process name the system reports
 // for it is magpie-bun, not bun.
 func TestHostRunsAsMagpieBun(t *testing.T) {
-	real, err := exec.LookPath("bun")
-	if err != nil {
-		t.Skip("no bun on PATH")
-	}
+	real := testenv.Bun(t)
 	bunHome(t, BunVersion, time.Now())
 	t.Cleanup(Settle)
 	// a real Bun as magpie downloaded it before, at the old name: a hard

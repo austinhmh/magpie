@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yetone/magpie/internal/testenv"
 )
 
 // gitFileURL is a bare repository's git+file:// URL, as a plugin spec.
@@ -28,10 +30,9 @@ func realBunSandbox(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("no git on PATH")
 	}
-	bun, err := exec.LookPath("bun")
-	if err != nil {
-		t.Skip("no bun on PATH")
-	}
+	// a bun older than magpie runs plugins on resolves no git+file commit
+	// ("no commit matching"): Bun skips the test for it, as for none
+	bun := testenv.Bun(t)
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)

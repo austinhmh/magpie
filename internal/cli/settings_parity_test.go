@@ -147,6 +147,7 @@ var cliForRoute = map[string]string{
 	"POST /api/plugins/{op}":               "magpie plugin",
 	"GET /api/login/usage":                 "magpie quota",
 	"GET /api/providers":                   "magpie providers",
+	"POST /api/providers/reclaude":         "magpie accounts reclaude",
 	"POST /api/provider/{action}":          "magpie provider",
 	"GET /api/sessions/reads":              "magpie sessions read",
 	"POST /api/sessions/reads":             "magpie sessions read",
@@ -172,6 +173,7 @@ var notYet = map[string]string{
 	"GET /api/drift":                             A,  // api.go
 	"GET /api/notices":                           W,  // api.go
 	"GET /api/omarchy":                           W,  // api.go
+	"GET /api/quit":                              W,  // api.go: quits the window's app
 	"GET /api/state":                             W,  // api.go
 	"POST /api/agents/{action}/{id}":             A,  // api.go
 	"POST /api/agents/arrange":                   W,  // api.go

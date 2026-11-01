@@ -269,8 +269,16 @@ func TestReClaudeWarmUpAsksSonnet(t *testing.T) {
 // With ReClaude on, every Claude run is -p whatever the interactive mode's
 // switch says: ReClaude's launcher has only been run as -p, and under the
 // interactive mode (claudeTUIOn) a -p run is refused and never reused, so
-// each of a conversation's turns would start a Claude Code anew.
+// each of a conversation's turns would start a Claude Code anew. The
+// gateway's tests run without the interactive mode's shim (no-shim), which
+// hid that startRun refused a ReClaude run: the shim is at hand here, as it
+// is in a real gateway, and a turn goes through.
 func TestReClaudeRunsAsPrint(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake launcher is a shell script")
+	}
+	fresh(t)
+	t.Setenv("MAGPIE_NO_ACCOUNTS", "")
 	was := claudeTUIRuns
 	claudeTUIRuns = true
 	t.Cleanup(func() { claudeTUIRuns = was })
@@ -290,5 +298,27 @@ func TestReClaudeRunsAsPrint(t *testing.T) {
 	}
 	if tui, code := claudeTUI(&Request{}, binary); tui || code != "reclaude" {
 		t.Fatalf("claudeTUI says %v %q, want -p for reclaude", tui, code)
+	}
+	launcherDirectory := t.TempDir()
+	testenv.Program(t, filepath.Join(launcherDirectory, "reclaude"), `#!/bin/sh
+if [ "$1" = status ]; then printf 'daemon_running: true\ndaemon_reachable: true\n'; exit 0; fi
+while IFS= read -r request; do
+  echo '{"type":"stream_event","event":{"type":"message_start","message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1}}}}'
+  echo '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"from reclaude"}}}'
+  echo '{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}}'
+  echo '{"type":"stream_event","event":{"type":"message_stop"}}'
+  echo '{"type":"result","subtype":"success","is_error":false,"result":"from reclaude"}'
+done
+`)
+	t.Setenv("PATH", launcherDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	runsEndWithTest(t, launcherDirectory)
+	server := New()
+	t.Cleanup(server.subscription.abortAll)
+	account := provider.Provider{ID: "claude", Account: &provider.Account{Agent: "claude", User: provider.ReClaudeUser, ReClaude: true}}
+	body := `{"model":"claude-sonnet-5","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`
+	recorder := httptest.NewRecorder()
+	status, why := server.serveClaudeSubscription(recorder, httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body)), provider.Anthropic, account, "claude-sonnet-5", []byte(body), &Usage{})
+	if status != 200 || !strings.Contains(recorder.Body.String(), "from reclaude") {
+		t.Fatalf("a ReClaude turn with the interactive mode's shim at hand: %d %s: %s", status, why, recorder.Body.String())
 	}
 }

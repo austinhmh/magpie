@@ -33,7 +33,7 @@ var Keys = []string{
 	"tray", "dock", "dockWindow", "dockNever", "lightweight", "keepAwake", "keepAwakeDisplay",
 	"noWSLAgents", "sessionTerminal", "signInLinkOnly",
 	// the menu bar's allowance cards
-	"trayUsages", "trayUsage", "trayUsageEvery", "trayNoLogos", "trayNoBird", "trayPace", "trayNoCost", "trayWindows",
+	"trayUsages", "trayUsage", "trayUsageEvery", "trayNoLogos", "trayNoBird", "trayPace", "trayNoCost", "trayWindows", "trayNoNumber",
 	// usage and alerts
 	"currency", "chineseUnits", "usageAlert", "balanceAlert", "resetReminder", "turnDoneAlert", "maskAlert",
 	// network

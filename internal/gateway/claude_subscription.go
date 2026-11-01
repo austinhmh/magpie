@@ -1006,7 +1006,8 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	// runs them interactively. A run it can't take is refused, never made
 	// -p: a refused request never ran, and isn't the last run
 	tui, code := claudeTUI(req, binary)
-	if !tui && code != "off" && code != "no-shim" {
+	// a ReClaude run is -p by design (claudeMachineWhy), not one refused
+	if !tui && code != "off" && code != "no-shim" && code != "reclaude" {
 		cleanup()
 		return nil, nil, &tuiRefusal{claudeTUIErr(claudeNotTUIWhy(req, binary))}
 	}

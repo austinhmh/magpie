@@ -305,7 +305,10 @@ it has stayed so for 300ms (`ready`, `trustSettle`). Pressing Enter blind
 chose "No, exit" in the real gateway, and no run started.
 
 Every run is `-p` only when Settings › Models › Replies › Claude Code's
-interactive mode is Off (`claudePrintMode`), or in the gateway's own
+interactive mode is Off (`claudePrintMode`), while the local ReClaude
+source is on (code `reclaude`: ReClaude's launcher has only been run as
+`-p`, so its runs are `-p`, kept for their conversation's next turn and
+never refused for not being interactive), or in the gateway's own
 tests, whose fake Claude Codes are `-p` ones (`claudeTUIRuns`, code
 `no-shim`). With it On, nothing ever runs as `-p` (the owner, 11-01): the
 plan counts a `-p` request as another client's, at about twice the
@@ -372,7 +375,8 @@ reads `GET /api/claude/mode` (`gateway.ClaudeModeNow`) as the page
 opens, kept 30 seconds and dropped when the setting changes, not in
 `/api/providers`' polls. What decides it for every run on the machine is
 `claudeMachineWhy`, whose codes the page words: `off` (the setting),
-`missing` (no Claude Code found), `os` and `no-shim`. Beside
+`reclaude` (every request runs as claude -p through ReClaude, said as
+no failure), `missing` (no Claude Code found), `os` and `no-shim`. Beside
 the switch: turned off, that every request runs as claude -p; on where
 the interactive mode can't run, that Claude requests fail, and why;
 otherwise the last request, when it was the interactive mode's. A
