@@ -1,0 +1,37 @@
+docs/subsystems/claude-subscription-bridge.md
+  s_4d14b2eb214fdb::t_464ccdfd0cd661 1174-1186,1246-1249
+internal/gateway/claude_cut_stream_test.go
+  s_4d14b2eb214fdb::t_ff596aca911621 5,34-35,54,74,89,102-103,114,118-164,176,180-182,202,223,242,262
+internal/gateway/claude_subscription.go
+  s_4d14b2eb214fdb::t_206beb609cbb2b 2941-2943,2948-2953,3078
+  s_4d14b2eb214fdb::t_c5190eaf2d605e 3066-3073,3075,3079,3088
+internal/gateway/ir.go
+  s_4d14b2eb214fdb::t_f985e250f4c4c0 439-442,505-508
+internal/gateway/reasoning_state_anthropic_test.go
+  s_4d14b2eb214fdb::t_3f31b0b09131fd 234
+internal/gateway/claude_text_calls_test.go
+  s_4d14b2eb214fdb::t_6fa067446265a7 100,141,237
+  s_4d14b2eb214fdb::t_7076f4225637a8 153
+internal/netproxy/login_test.go
+  s_4d14b2eb214fdb::t_b38a2ed6907eae 184-186,190
+  s_4d14b2eb214fdb::t_d56162963762fc 15
+internal/proc/disclaim_test.go
+  s_4d14b2eb214fdb::t_7fc03ce04f5056 48,52,54
+  s_4d14b2eb214fdb::t_1614a5e2446877 49-51,53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6dbd2a3231ca587a02cd6e6861ccad666abfde21",
+  "prompts": {},
+  "sessions": {
+    "s_4d14b2eb214fdb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7419c61f-2f57-47da-a1f8-3789e6367d58",
+        "model": "model-k4a39l"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
