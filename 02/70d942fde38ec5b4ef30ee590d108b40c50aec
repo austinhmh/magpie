@@ -14,6 +14,10 @@ docs/subsystems/gui-shell.md
   s_99fccf3403855d::t_e3423a0b89005c 10-16
 internal/gui/assets/i18n.js
   s_99fccf3403855d::t_e3423a0b89005c 32-38,4410-4416,8773-8779,13138-13144
+  s_4d14b2eb214fdb::t_f983bf7b95aa21 4397
+  s_4d14b2eb214fdb::t_2fccbd75e0549a 19
+  s_4d14b2eb214fdb::t_06534088543b35 13125
+  s_4d14b2eb214fdb::t_733ec6792afc0c 8760
 internal/gui/tests/reclaude-source.test.cjs
   s_99fccf3403855d::t_e3423a0b89005c 1-95
 internal/settings/accounts.go
@@ -36,6 +40,7 @@ internal/provider/account.go
   s_99fccf3403855d::t_e3423a0b89005c 47-50,801-810
 internal/cli/accounts_cli.go
   s_99fccf3403855d::t_e3423a0b89005c 34-57
+  s_4d14b2eb214fdb::t_7502ed93f0d929 58
 docs/reclaude-local-bridge.md
   s_99fccf3403855d::t_e3423a0b89005c 1-339
 internal/provider/claude_probe.go
@@ -46,6 +51,10 @@ internal/provider/claude_warmup.go
   s_99fccf3403855d::t_e3423a0b89005c 40-42,83-85
 internal/gateway/claude_subscription.go
   s_99fccf3403855d::t_e3423a0b89005c 671-673,780-788,1033,2810-2830,5400-5412,5416-5420
+  s_4d14b2eb214fdb::t_32d72f1961bf40 1206
+  s_4d14b2eb214fdb::t_f2da75297cdba7 1351-1352,1354-1355
+  s_4d14b2eb214fdb::t_37042e58aa647b 5454
+  s_4d14b2eb214fdb::t_f484e98cc813d8 1161-1162
 internal/gui/settings_keep_test.go
   s_99fccf3403855d::t_e3423a0b89005c 192
 internal/gui/reclaude_test.go
@@ -59,6 +68,13 @@ docs/subsystems/claude-subscription-bridge.md
   s_99fccf3403855d::t_ff33bfb5605e2b 91
 internal/cli/main.go
   s_99fccf3403855d::t_e3423a0b89005c 100
+internal/settingsapi/settingsapi.go
+  s_4d14b2eb214fdb::t_9494dfaa6a02da 254
+internal/gui/tests/claude-mode.test.cjs
+  s_4d14b2eb214fdb::t_3cd1b6232b3258 177-187
+  s_4d14b2eb214fdb::t_4cab834c03768e 38,43-47
+internal/gui/assets/claudemode.js
+  s_4d14b2eb214fdb::t_aedfc8ed957bb0 84-86,88-89,92
 ---
 {
   "schema_version": "authorship/3.0.0",
