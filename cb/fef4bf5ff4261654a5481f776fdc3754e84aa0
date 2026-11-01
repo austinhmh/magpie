@@ -1,0 +1,23 @@
+internal/gateway/claude_refusal_fallback_test.go
+  s_4d14b2eb214fdb::t_46ffff005a87c5 131,168,184
+internal/gateway/claude_text_calls_test.go
+  s_4d14b2eb214fdb::t_9fb39726049f1d 254
+internal/gateway/claude_subscription.go
+  s_4d14b2eb214fdb::t_907554b23a42f5 3008
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cbfef4bf5ff4261654a5481f776fdc3754e84aa0",
+  "prompts": {},
+  "sessions": {
+    "s_4d14b2eb214fdb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7419c61f-2f57-47da-a1f8-3789e6367d58",
+        "model": "model-syr9n5"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
