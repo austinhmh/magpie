@@ -4,6 +4,7 @@ internal/gateway/claude_cut_stream_test.go
   s_4d14b2eb214fdb::t_ff596aca911621 5,34-35,54,74,89,102-103,114,118-164,176,180-182,202,223,242,262
 internal/gateway/claude_subscription.go
   s_4d14b2eb214fdb::t_206beb609cbb2b 2941-2943,2948-2953,3078
+  s_4d14b2eb214fdb::t_c5190eaf2d605e 3066-3073,3075,3079,3088
 internal/gateway/ir.go
   s_4d14b2eb214fdb::t_f985e250f4c4c0 439-442,505-508
 internal/gateway/reasoning_state_anthropic_test.go
