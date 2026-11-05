@@ -1,0 +1,68 @@
+docs/reclaude-local-bridge.md
+  s_eb90884c410dde::t_556987d96fbcf9 170-178,181-183
+  s_eb90884c410dde::t_c17a7289a475cf 344-346
+docs/subsystems/claude-subscription-bridge.md
+  s_4d14b2eb214fdb::t_930e7729ca635c 601-613,655-658
+  s_adc9e7800e8422::t_3a7af05bdb9318 15-20
+docs/subsystems/providers-accounts.md
+  s_eb90884c410dde::t_82b8dd204be167 22-24
+internal/gateway/claude_subscription.go
+  s_4d14b2eb214fdb::t_930e7729ca635c 2112-2114,2119-2124,2203-2213,2218
+internal/provider/reclaude_test.go
+  s_adc9e7800e8422::t_67100d76844c11 16-29,31-44,49-76
+  s_adc9e7800e8422::t_d1b98b775b474d 30
+  s_adc9e7800e8422::t_8b4c200e79018f 45-48
+internal/gateway/ir.go
+  s_4d14b2eb214fdb::t_930e7729ca635c 358-361,417-420
+internal/provider/claude_warmup.go
+  s_eb90884c410dde::t_96641f98b55266 12-13,15
+  s_eb90884c410dde::t_420fabf89a843a 86,88,94-188
+internal/gateway/claude_cut_stream_test.go
+  s_4d14b2eb214fdb::t_930e7729ca635c 5,34-35,54,74,89,102-103,114,118-164,176,180-182,202,223,242,262
+internal/provider/reclaude.go
+  s_adc9e7800e8422::t_aa3328db25467a 85-86,109-111,113,115-121
+  s_eb90884c410dde::t_ce0d254e2ca613 133,135,140-179
+  s_adc9e7800e8422::t_8402e0d51cb9cd 102-106
+  s_adc9e7800e8422::t_d9898d76bd6ae7 6,84,87-101,107-108,112,131-132
+  s_eb90884c410dde::t_cf047cd3696a77 180-181
+internal/gateway/reasoning_state_anthropic_test.go
+  s_4d14b2eb214fdb::t_930e7729ca635c 234
+internal/gateway/reclaude_test.go
+  s_eb90884c410dde::t_3f458b1cc8b9b7 244-266
+internal/gateway/claude_warmup.go
+  s_eb90884c410dde::t_94f473523cd369 31-33,35-37
+internal/provider/reclaude_keepalive_test.go
+  s_eb90884c410dde::t_0da0d2151684d7 1-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f207365f132fb4b6e3ae7d63238c44c87162fb81",
+  "prompts": {},
+  "sessions": {
+    "s_4d14b2eb214fdb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7419c61f-2f57-47da-a1f8-3789e6367d58",
+        "model": "model-k4a39l"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    },
+    "s_adc9e7800e8422": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d3c4ec3b-3d9a-4a36-89fc-e6f9a89d7eed",
+        "model": "model-fmbzml"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    },
+    "s_eb90884c410dde": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3119c900-31cd-4e63-995c-d7a012c5ddcc",
+        "model": "model-fk1atv"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
