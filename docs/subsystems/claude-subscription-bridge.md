@@ -12,8 +12,12 @@ provider instead starts the installed `reclaude` launcher. At the entry to
 `serveClaudeSubscription`, `Account.Token` checks the selected source before
 either a new turn or tool results can reach an existing run. The shared
 `provider.ReClaudeBinary` check finds the launcher and checks daemon status
-with the caller's context and a five-second timeout; the UI maps that same
-check to its on/ready/reason fields. A new subprocess checks again after
+with the caller's context and a five-second timeout. It uses
+`reclaude status --check --json` for a verified, reachable daemon, falling
+back to older launchers' `daemon_running` and `daemon_reachable` fields.
+A plain current-version `reclaude status` is only an unverified snapshot;
+it cannot prove the daemon is reachable. The UI maps the same check to
+its on/ready/reason fields. A new subprocess checks again after
 waiting for a process slot, so a disabled source is not started from a
 queued request. A failure never falls through to a personal Claude account.
 Model probes and allowance reads use the same launcher and a per-call
@@ -594,6 +598,19 @@ calls does. Starting such a request anew instead would tell the whole
 conversation to a new run, a prefix the cache has never seen (#1716,
 #1717), for every message sent mid-turn.
 
+## An attempt cut short (#726)
+
+Claude Code asks again when Anthropic's stream is cut short (a dropped
+connection, `ECONNRESET`), each time with the whole prompt. The reply goes
+on in the attempt that answers (`readOutput`'s `cut`). The client is told
+that attempt's usage as the prompt: a client that reads the prompt as its
+context (Cursor++'s auto-compaction) saw the attempts' sum, 663,939 tokens
+where 173,988 were used. What the attempts cut short cost is the reply's
+`Usage.Deferred`: billed and priced as a tier of its own (`billed`,
+`routeUsage`), never told. A continuation after Claude Code's own call
+(`inside`) is part of the reply and is still added to what the client is
+told.
+
 ## The account's allowance on the reply (#1257)
 
 Claude Code tells a run's account allowance in its stream-json
@@ -635,3 +652,7 @@ go test -tags nogui ./internal/gateway/ -run 'ClaudeSubscriptionRunsTheDownloade
 rule that keeps another conversation out; `claude_lost_media_test.go` does
 the same for images taken out, from Hana's request bodies. `claude_resume_test.go`'s harness
 stands in for Claude Code with a script that keeps sessions as it does.
+`claude_cut_stream_test.go`'s `TestClaudeCutStreamTellsTheAnsweringPrompt`
+replays the reporter's three dropped attempts and checks what the client
+is told and what the request is billed for
+(`go test -tags nogui ./internal/gateway/ -run 'ClaudeCutStream' -count=1`).

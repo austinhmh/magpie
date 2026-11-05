@@ -9,7 +9,10 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -80,10 +83,106 @@ func ClaudeWarmed() map[string]time.Time { return codexWarmedIn(claudeWarmPath()
 // KeepClaudeWindowsWarm starts the Claude accounts' windows as they reset,
 // while settings say to, each with one request send makes.
 func KeepClaudeWindowsWarm(ctx context.Context, send func(ctx context.Context, configDir string) error) {
+	go keepReClaudeAlive(ctx, send) // runs alongside; it does nothing while ReClaude is off
 	if selected, _ := ReClaudeEnabled(); selected {
-		return // the synthetic source never starts an allowance window for the user
+		return // the personal accounts' warm-up never runs on the synthetic source
 	}
 	w := codexWarmer{path: claudeWarmPath(), now: time.Now, usage: claudeWarmUsage, send: warmClaudeLogin(send),
 		expect: claudeWindowsExpected, warmed: claudeWarmedNow}
 	keepWarm(ctx, "claude", w, func() (string, []string) { s := settings.Load(); return s.ClaudeWarmup, s.ClaudeWarmAts })
+}
+
+// reClaudeKeepAliveWindow is the entry the ReClaude keep-alive keeps under
+// the synthetic user in claude-warmup.json, beside the accounts' windows.
+const reClaudeKeepAliveWindow = "keep-alive"
+
+// reClaudeKeepAliveRetry is how long a failed keep-alive waits before the
+// next try, while its time of day is still within dailySlack.
+const reClaudeKeepAliveRetry = 5 * time.Minute
+
+// reClaudeKeepAliveDue says whether the latest of the times of day ats has
+// passed by no more than dailySlack and the keep-alive (last sent for the
+// start last) hasn't had it; key is the start to keep once it is sent.
+func reClaudeKeepAliveDue(ats []string, last string, now time.Time) (key string, due bool) {
+	start, ok := dayStart(ats, now)
+	if !ok || now.Sub(start) > dailySlack {
+		return "", false
+	}
+	key = startKey(start)
+	return key, !hadStart(last, key)
+}
+
+// reClaudeKeepAliveNow sends the ReClaude source one message through send
+// when one of ats is due, whether or not its 5-hour window is running, and
+// keeps the start it was sent for in path; sent says whether it tried.
+func reClaudeKeepAliveNow(ctx context.Context, path string, ats []string, now time.Time, send func(context.Context, string) error) (sent bool, err error) {
+	state := readWarmState(path)
+	userKey := strings.ToLower(ReClaudeUser)
+	key, due := reClaudeKeepAliveDue(ats, state[userKey][reClaudeKeepAliveWindow].Daily, now)
+	if !due {
+		return false, nil
+	}
+	if err := send(WithReClaude(ctx), ""); err != nil {
+		return true, err // nothing kept: tried again while the start is due
+	}
+	if state[userKey] == nil {
+		state[userKey] = map[string]warmWindow{}
+	}
+	state[userKey][reClaudeKeepAliveWindow] = warmWindow{Warmed: now, Daily: key}
+	body, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return true, err
+	}
+	return true, writePrivate(path, append(body, '\n'))
+}
+
+// startingReClaude is send for the keep-alive: a daemon `reclaude login` or
+// `reclaude stop` left stopped is started first (StartReClaudeDaemon); one
+// running is left as it is. Only the keep-alive starts it: a request's own
+// check (ReClaudeBinary) refuses as before.
+func startingReClaude(send func(ctx context.Context, configDir string) error) func(context.Context, string) error {
+	return func(ctx context.Context, configDir string) error {
+		if _, err := ReClaudeBinary(ctx); errors.Is(err, errReClaudeDaemonDown) {
+			log.Printf("claude warm-up: ReClaude daemon is not running; starting it")
+			if _, err := StartReClaudeDaemon(ctx); err != nil {
+				return err
+			}
+		}
+		return send(ctx, configDir)
+	}
+}
+
+// keepReClaudeAlive looks every minute, until ctx ends, and sends the
+// keep-alive at each of settings' ClaudeWarmAts while the source is
+// ReClaude, discovery is on and the claude provider isn't left alone.
+func keepReClaudeAlive(ctx context.Context, send func(context.Context, string) error) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	sendStarted := startingReClaude(send)
+	var retryAt time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		now := time.Now().Round(0) // the wall clock, which goes on while the machine sleeps
+		if now.Before(retryAt) {
+			continue
+		}
+		if selected, err := ReClaudeEnabled(); err != nil || !selected || discoveryOff() || leftAlone("claude") {
+			continue
+		}
+		sendContext, cancel := context.WithTimeout(ctx, 3*time.Minute) // the daemon's start, Claude Code's, Sonnet's answer
+		sent, err := reClaudeKeepAliveNow(sendContext, claudeWarmPath(), settings.Load().ClaudeWarmAts, now, sendStarted)
+		cancel()
+		switch {
+		case err != nil:
+			retryAt = now.Add(reClaudeKeepAliveRetry)
+			log.Printf("claude warm-up: ReClaude keep-alive: %v", err)
+		case sent:
+			claudeWarmedNow(ReClaudeUser) // its allowance read again, so the Usage card shows the window
+			log.Printf("claude warm-up: sent ReClaude its keep-alive")
+		}
+	}
 }

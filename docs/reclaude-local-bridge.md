@@ -167,11 +167,20 @@ synthetic account bypasses the normal Claude OAuth prerequisites and
 personal-account identity comparison. Failed reads remain unknown rather
 than becoming zero usage or borrowing a personal account's reading.
 Existing successful-run rate-limit events remain attributed to ReClaude.
-Automatic Claude warm-up does not run on this source.
+The personal accounts' Claude warm-up does not run on this source. At each
+of Settings' Claude times of day (`ClaudeWarmAts`), the ReClaude source is
+sent one Sonnet message through the launcher, whether or not its 5-hour
+window is running (`keepReClaudeAlive`, kept once per time in
+`claude-warmup.json`). A daemon found stopped then (`reclaude login` and
+`reclaude stop` leave it so) is started first with `reclaude daemon
+--detach` (`StartReClaudeDaemon`), the only place magpie starts it; a
+request finding it stopped still fails. A failed keep-alive is tried again
+every five minutes within the hour after its time.
 
 **Why:** inference through one account and quota checks through another
-would mislead both the user and routing. Automatic warm-up would also
-spend subscription quota without a user request.
+would mislead both the user and routing. The keep-alive spends quota only
+at times the user set, so it is off until they set one; starting the
+daemon from a request would hide a sign-in the user has to redo anyway.
 
 Sources: [subscription_usage.go](../internal/provider/subscription_usage.go),
 [login_usage.go](../internal/provider/login_usage.go),
@@ -332,6 +341,9 @@ boundaries rather than mechanically reapplying old line numbers:
    the synthetic account.
 7. The Providers switch works repeatedly in both browser engines and
    remains consistent after errors and general Settings saves.
+8. The keep-alive still runs at `ClaudeWarmAts`, asks Sonnet, and starts a
+   stopped daemon from there alone (`startingReClaude`), never from a
+   request, a model test or a `/usage` read.
 
 Run the regression and full checks on the actual merged tree. Do not
 present the patch as release-ready until unresolved test failures are

@@ -2109,11 +2109,19 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	// what the messages before cost, as each message's usage counts only
 	// itself and the client keeps the last it is told
 	var before, this Usage
+	// what attempts cut short cost: Claude Code asked their prompt again,
+	// so it is billed with the reply (Deferred), never told as its prompt
+	var retried Usage
 	var reqID, errKind string // the last request's id, and how it failed
 	usage := func(u cliUsage) Usage {
 		v := u.gateway()
 		this.add(v)
-		return v.carryUpdate(this, before)
+		v = v.carryUpdate(this, before)
+		if retried != (Usage{}) {
+			spent := retried
+			v.Deferred = &spent
+		}
+		return v
 	}
 	// A stream Anthropic cut short (a dropped connection, a stall) Claude
 	// Code ends with a message_stop of its own and no message_delta, and
@@ -2192,13 +2200,22 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	// after Claude Code's own call or an attempt cut short
 	begin := func(id, model string, u cliUsage) {
 		own, theirs, stopped, shown = map[int]bool{}, false, false, false
-		if inside || cut {
-			inside, cut = false, false
+		if cut {
+			// the attempt cut short read the same prompt again: billed, not told
+			cut = false
+			retried, this = retried.plus(this, false), Usage{}
+			v := usage(u)
+			v.newPrompt = true
+			r.emit(Event{Kind: KUsage, Usage: v})
+			return
+		}
+		if inside {
+			inside = false
 			before, this = before.plus(this, false), Usage{}
 			r.emit(Event{Kind: KUsage, Usage: usage(u)})
 			return
 		}
-		before, this = Usage{}, Usage{}
+		before, this, retried = Usage{}, Usage{}, Usage{}
 		r.mu.Lock()
 		r.asked = nil
 		r.mu.Unlock()

@@ -13,6 +13,67 @@ import (
 	"github.com/yetone/magpie/internal/testenv"
 )
 
+func TestReClaudeStatusChecksLiveDaemonHealth(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake launcher is a shell script")
+	}
+	limitsHome(t)
+	t.Setenv("MAGPIE_NO_ACCOUNTS", "")
+	launcherDirectory := t.TempDir()
+	testenv.Program(t, filepath.Join(launcherDirectory, "reclaude"), `#!/bin/sh
+if [ "$1" != status ]; then exit 2; fi
+if [ "$2" != --check ] || [ "$3" != --json ]; then
+  printf '[global]\nBackground service: recorded as running (unverified)\n'
+  exit 0
+fi
+printf '{"checked":%s,"global":{"daemon":{"status":{"state":"%s"},"recorded_running":true}}}\n' "$FAKE_RECLAUDE_CHECKED" "$FAKE_RECLAUDE_HEALTH"
+if [ "$FAKE_RECLAUDE_HEALTH" = unreachable ]; then exit 2; fi
+`)
+	t.Setenv("PATH", launcherDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := SetReClaude(true); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FAKE_RECLAUDE_CHECKED", "true")
+	t.Setenv("FAKE_RECLAUDE_HEALTH", "reachable")
+	if state := ReClaudeStatus(); !state.On || !state.Ready {
+		t.Fatalf("reachable checked daemon must be ready: %+v", state)
+	}
+	t.Setenv("FAKE_RECLAUDE_HEALTH", "unreachable")
+	if _, err := ReClaudeBinary(t.Context()); !errors.Is(err, errReClaudeDaemonDown) {
+		t.Fatalf("recorded_running must not hide an unreachable daemon: %v", err)
+	}
+	t.Setenv("FAKE_RECLAUDE_HEALTH", "unverified")
+	if state := ReClaudeStatus(); state.Ready || !strings.Contains(state.Why, "did not report verified") {
+		t.Fatalf("unverified health must remain unknown: %+v", state)
+	}
+	t.Setenv("FAKE_RECLAUDE_CHECKED", "false")
+	t.Setenv("FAKE_RECLAUDE_HEALTH", "reachable")
+	if state := ReClaudeStatus(); state.Ready || !strings.Contains(state.Why, "did not verify") {
+		t.Fatalf("unchecked snapshot must not be accepted as live health: %+v", state)
+	}
+}
+
+func TestReClaudeStatusFallsBackToLegacyLauncher(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake launcher is a shell script")
+	}
+	limitsHome(t)
+	t.Setenv("MAGPIE_NO_ACCOUNTS", "")
+	launcherDirectory := t.TempDir()
+	testenv.Program(t, filepath.Join(launcherDirectory, "reclaude"), `#!/bin/sh
+if [ "$1" != status ]; then exit 2; fi
+if [ "$2" = --check ]; then exit 2; fi
+printf 'daemon_running: true\ndaemon_reachable: true\n'
+`)
+	t.Setenv("PATH", launcherDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := SetReClaude(true); err != nil {
+		t.Fatal(err)
+	}
+	if state := ReClaudeStatus(); !state.Ready {
+		t.Fatalf("legacy launcher must remain usable: %+v", state)
+	}
+}
+
 func TestReClaudeProbeHonorsCallerCancellation(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake launcher is a shell script")
