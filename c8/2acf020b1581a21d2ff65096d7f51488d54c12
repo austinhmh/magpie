@@ -1,0 +1,19 @@
+internal/gateway/codex_accounts_test.go
+  s_356e4cf521e638::t_9abc77af0781d7 702-704,713,734-735,741
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c82acf020b1581a21d2ff65096d7f51488d54c12",
+  "prompts": {},
+  "sessions": {
+    "s_356e4cf521e638": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "cfe3b655-b8d2-41eb-bdf3-49929bb61f34",
+        "model": "model-syr9n5"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
