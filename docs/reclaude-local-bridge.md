@@ -205,6 +205,46 @@ Sources: [gui/providers.go](../internal/gui/providers.go),
 [i18n.js](../internal/gui/assets/i18n.js),
 [accounts_cli.go](../internal/cli/accounts_cli.go).
 
+### The MCP helper runs from a stable copy (2026-11-02)
+
+The Claude subscription bridge's MCP helper is magpie's own executable, run
+by Claude Code as `magpie claude-mcp-helper` (`claudeCLI.exe`). It now runs
+from a copy magpie makes once under the cache
+(`selfCopy`/`copyExeToCache`, `internal/gateway/claude_helper_exe.go`),
+named for the executable's content and reused unchanged, rather than from
+the installed binary. `os.Executable()` stays the fallback; WSL keeps
+`wslrun.Exe`.
+
+**Why:** on the maintainer's managed Mac, two endpoint-security agents run
+(a CorpLink system extension with `com.apple.developer.endpoint-security.client`,
+and a ThreatBook/Cardinal monitor). The deployed binary at `~/.local/bin`
+was replaced on every restart by a workaround script, so each launch
+presented the agents a new, locally built, ad-hoc-signed executable. A
+process started from such a just-written file was killed before it ran: a
+helper launched by Claude Code exited within 50–260 ms without answering
+(`mcpDown` reads Claude Code's `rmcp-class pre-init hard close`), and one
+launched from a Cursor terminal was left in uninterruptible exit, blocked
+on a turnstile owned by Cursor, that `kill -9` could not reap. Every helper
+then failed to connect and the model was offered none of the client's
+tools. The two production failure windows (10:56 and 11:10 on 11-02) fell
+inside ThreatBook's Cardinal rate-limit windows, when it disabled rules
+"through the driver" under load; the correlation is suggestive, not proven,
+and neither agent logged a disposition against this file.
+
+A copy made once and reused unchanged is evaluated by the agents once, as
+the identical copy under `/tmp` that stayed up for hours was. This is a
+local mitigation that stops magpie from handing the agents a new executable
+on every launch; it does not disable, bypass or hide from them, and it is
+not a confirmed root-cause fix. If an agent judges by content or signature
+rather than by file identity, only adding the binary to the agents'
+trust list (through the machine's IT) will resolve it. The interactive
+mode's helper (`magpie claude-tui-helper`, `tuiCommand`) still starts from
+`os.Executable()`; it is not reached with ReClaude on (runs are `claude -p`),
+and routing it the same way is a follow-up.
+
+Sources: [claude_helper_exe.go](../internal/gateway/claude_helper_exe.go),
+[claude_subscription.go](../internal/gateway/claude_subscription.go).
+
 ## 4. What "simplified" does and does not mean
 
 The simplification consolidated repeated environment handling and health

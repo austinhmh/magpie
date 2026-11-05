@@ -141,6 +141,23 @@ is judged as any other. Without it the call was refused 401, never
 reached the run, and every turn with tool results found no run waiting and
 started a new Claude Code told the whole conversation (#1546).
 
+Claude Code runs the helper as `magpie claude-mcp-helper` from a copy of
+magpie's own executable kept under the cache, not from the installed path
+(`claudeCLI.exe`; `selfCopy`, `claude_helper_exe.go`). The copy is made
+once, named for its content, and reused unchanged, so a restart neither
+rewrites it nor changes its inode. On one user's Mac the installed binary
+at `~/.local/bin` was replaced on every launch by a restart script, and an
+endpoint-security agent killed a run started from the just-written file
+before it ran, so every helper's connection failed (`mcpDown`,
+`reconnectMCP`) and the model was offered none of the client's tools. A
+copy judged once is not handed to the agent anew each launch; this does not
+disable or bypass the agent. `os.Executable()` is the fallback, and a run
+in WSL keeps `wslrun.Exe`. Covered by `TestClaudeHelperExeCopiedOnce` and
+`TestClaudeHelperExeNewContentNewCopy`. The interactive mode's helper
+(`magpie claude-tui-helper`, `tuiCommand`) still starts from
+`os.Executable()`; routing it the same way is a follow-up. See the
+[local record](../reclaude-local-bridge.md).
+
 ## Claude Code's interactive mode (`claudePrintMode`)
 
 By default a run on macOS, Linux and Windows is Claude Code's

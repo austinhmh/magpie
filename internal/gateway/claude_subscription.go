@@ -748,10 +748,17 @@ func (c claudeCLI) tuiWSLUnread() bool {
 	return err != nil
 }
 
-// exe is magpie's own executable, as this Claude Code starts it.
+// exe is magpie's own executable, as this Claude Code starts the MCP
+// helper. Not in WSL, it is a copy magpie keeps under the cache
+// (selfCopy), so the helper runs from a file magpie wrote once and nothing
+// else replaces; the executable itself is the fallback. See
+// claude_helper_exe.go.
 func (c claudeCLI) exe() (string, error) {
 	if c.wsl != nil {
 		return c.wsl.Exe()
+	}
+	if p, err := selfCopy(); err == nil {
+		return p, nil
 	}
 	return os.Executable()
 }
