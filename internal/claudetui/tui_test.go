@@ -41,16 +41,27 @@ func TestMain(m *testing.M) {
 func fakeTrust(r *bufio.Reader) {
 	var mu sync.Mutex
 	yes, deaf := false, true
+	// FAKE_TRUST=partial: as Claude Code 2.1.318, the ❯ alone is redrawn,
+	// never its choice's words, both as it starts listening and as ↓
+	// moves it (the bytes 2.1.318 wrote on 11-09)
+	marksOnly := os.Getenv("FAKE_TRUST") == "partial"
+	marks := map[bool]string{true: "\x1b[38;2;177;185;249m❯\x1b[39m", false: " "}
 	draw := func() {
-		marks := map[bool]string{true: "\x1b[38;2;177;185;249m❯\x1b[39m", false: " "}
 		fmt.Printf("\x1b[2GDo\x1b[5Gyou\x1b[9Gtrust\x1b[15Gthis\x1b[20Gfolder?\r\n\x1b[2G%s\x1b[4GNo,\x1b[8Gexit\r\n\x1b[2G%s\x1b[4GYes,\x1b[9GI\x1b[11Gtrust\x1b[17Gthis\x1b[22Gfolder\r\n", marks[!yes], marks[yes])
+	}
+	drawMarks := func() {
+		fmt.Printf("\x1b[2A\x1b[2G%s\x1b[1B\x1b[2G%s\x1b[1B", marks[!yes], marks[yes])
 	}
 	draw()
 	time.AfterFunc(150*time.Millisecond, func() {
 		mu.Lock()
 		defer mu.Unlock()
 		deaf, yes = false, false
-		draw()
+		if marksOnly {
+			drawMarks()
+		} else {
+			draw()
+		}
 	})
 	for {
 		c, err := r.ReadByte()
@@ -68,8 +79,13 @@ func fakeTrust(r *bufio.Reader) {
 		switch {
 		case deaf:
 		case c == 'B' || c == 'A':
-			yes = c == 'B'
-			draw()
+			if marksOnly {
+				yes = !yes // ↓ goes round the two choices
+				drawMarks()
+			} else {
+				yes = c == 'B'
+				draw()
+			}
 		case c == '\r' && !yes:
 			os.Exit(1)
 		case c == '\r':
@@ -115,7 +131,7 @@ func fakeClaude(args []string) {
 	// outside one sends it
 	fakeRaw()
 	r := bufio.NewReader(os.Stdin)
-	if os.Getenv("FAKE_TRUST") == "1" {
+	if os.Getenv("FAKE_TRUST") != "" {
 		fakeTrust(r)
 	}
 	// what it was started with, for the test to read
@@ -515,6 +531,15 @@ func TestShimFirstMessageWaitsForTools(t *testing.T) {
 
 func TestShimTrustsWhenTold(t *testing.T) {
 	out := runShim(t, []string{"FAKE_TRUST=1", TrustEnv + "=1"}, append([]string{fakePath(t)}, pArgs...), []string{"hello"}, 3)
+	if out[0]["subtype"] != "init" || out[1]["type"] != "assistant" {
+		t.Fatalf("got %v, want an interactive turn", out)
+	}
+}
+
+// Claude Code 2.1.318 redraws only the ❯ as the choice moves: the helper
+// pressed ↓ until readyWait ran out, never seeing "❯ Yes, I trust" whole.
+func TestShimTrustsWhenOnlyTheMarkIsRedrawn(t *testing.T) {
+	out := runShim(t, []string{"FAKE_TRUST=partial", TrustEnv + "=1"}, append([]string{fakePath(t)}, pArgs...), []string{"hello"}, 3)
 	if out[0]["subtype"] != "init" || out[1]["type"] != "assistant" {
 		t.Fatalf("got %v, want an interactive turn", out)
 	}

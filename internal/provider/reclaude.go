@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/yetone/magpie/internal/appdir"
@@ -88,6 +89,25 @@ func ReClaudeBinary(ctx context.Context) (string, error) {
 	if ctx.Err() != nil {
 		return "", fmt.Errorf("reclaude status: %w", ctx.Err())
 	}
+	// Parsed apart from the health check, so a field of another type here
+	// never changes what the check decides. An older launcher's text parses
+	// to nothing.
+	var located struct {
+		Global struct {
+			DataDir string `json:"data_dir"`
+		} `json:"global"`
+		Claude struct {
+			Current struct {
+				DeviceID json.Number `json:"device_id"`
+			} `json:"current"`
+		} `json:"claude"`
+	}
+	_ = json.Unmarshal(output, &located)
+	statusConfigDir := ""
+	if located.Global.DataDir != "" && located.Claude.Current.DeviceID != "" {
+		statusConfigDir = filepath.Join(located.Global.DataDir, "claude", "accounts", located.Claude.Current.DeviceID.String(), "config")
+	}
+	reClaudeStatusConfigDir.Store(&statusConfigDir)
 	var checkedStatus struct {
 		Checked bool `json:"checked"`
 		Global  struct {
@@ -140,13 +160,24 @@ func ReClaudeBinary(ctx context.Context) (string, error) {
 	return launcherPath, nil
 }
 
+// reClaudeStatusConfigDir is the config folder the last `reclaude status
+// --check --json` named (data_dir and claude.current.device_id), "" when
+// it named none. Every run checks the status first (ReClaudeBinary), and
+// each read replaces it, so an account switched since isn't kept.
+var reClaudeStatusConfigDir atomic.Pointer[string]
+
 // ReClaudeConfigDir is the Claude Code config folder ReClaude's launcher
-// runs Claude Code in: ~/.rec/claude/accounts/<id>/config, for the account
-// ~/.rec/claude/current names. A ReClaude run has magpie's own
-// CLAUDE_CONFIG_DIR taken out (cleanReClaudeEnv), so its sessions are kept
-// there, not in ~/.claude. "" when the account can't be read or its folder
-// isn't there: unknown, not ~/.claude.
+// runs Claude Code in: <data_dir>/claude/accounts/<device_id>/config as the
+// launcher's status names them, else for the account ~/.rec/claude/current
+// names. A ReClaude run has magpie's own CLAUDE_CONFIG_DIR taken out
+// (cleanReClaudeEnv), so its sessions are kept there, not in ~/.claude.
+// "" when neither names a folder that is there: unknown, not ~/.claude.
 func ReClaudeConfigDir() string {
+	if fromStatus := reClaudeStatusConfigDir.Load(); fromStatus != nil && *fromStatus != "" {
+		if info, err := os.Stat(*fromStatus); err == nil && info.IsDir() {
+			return *fromStatus
+		}
+	}
 	home, err := appdir.Home()
 	if err != nil {
 		return ""

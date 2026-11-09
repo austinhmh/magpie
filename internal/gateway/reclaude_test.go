@@ -299,6 +299,46 @@ done
 	}
 }
 
+// With ReClaude's config folder known, its runs are the interactive mode
+// (entrypoint cli), and the helper is told that folder: the launcher sets
+// it for Claude Code alone, and the helper reads the transcript there.
+func TestReClaudeRunsInteractiveWithItsConfigDirKnown(t *testing.T) {
+	fresh(t)
+	t.Setenv("MAGPIE_NO_ACCOUNTS", "")
+	was := claudeTUIRuns
+	claudeTUIRuns = true
+	t.Cleanup(func() { claudeTUIRuns = was })
+	t.Cleanup(func() { _ = provider.SetReClaude(false) })
+	home, _ := os.UserHomeDir()
+	reClaudeConfigDir := filepath.Join(home, ".rec", "claude", "accounts", "54787", "config")
+	if err := os.MkdirAll(reClaudeConfigDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".rec", "claude", "current"), []byte("54787\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.SetReClaude(true); err != nil {
+		t.Fatal(err)
+	}
+	binary := claudeCLI{path: "/usr/local/bin/reclaude"}
+	if !claudeTUIOn() {
+		t.Fatal("the interactive mode is off with ReClaude's config folder known")
+	}
+	if code, why := claudeMachineWhy(binary); why != "" {
+		t.Fatalf("claudeMachineWhy says %q (%s), want the interactive mode", code, why)
+	}
+	if tui, code := claudeTUI(&Request{}, binary); !tui {
+		t.Fatalf("claudeTUI says -p (%q) with ReClaude's config folder known", code)
+	}
+	helperEnvironment := binary.tuiEnv(provider.WithReClaude(t.Context()), nil, "")
+	if !slices.Contains(helperEnvironment, "CLAUDE_CONFIG_DIR="+reClaudeConfigDir) {
+		t.Fatalf("the helper isn't told ReClaude's config folder: %v", helperEnvironment)
+	}
+	if ordinaryEnvironment := binary.tuiEnv(t.Context(), nil, ""); slices.ContainsFunc(ordinaryEnvironment, func(e string) bool { return strings.HasPrefix(e, "CLAUDE_CONFIG_DIR=") }) {
+		t.Fatalf("a run not on ReClaude is told a config folder: %v", ordinaryEnvironment)
+	}
+}
+
 func TestReClaudeWarmUpAsksSonnet(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake launcher is a shell script")
@@ -322,13 +362,14 @@ func TestReClaudeWarmUpAsksSonnet(t *testing.T) {
 	}
 }
 
-// With ReClaude on, every Claude run is -p whatever the interactive mode's
-// switch says: ReClaude's launcher has only been run as -p, and under the
-// interactive mode (claudeTUIOn) a -p run is refused and never reused, so
-// each of a conversation's turns would start a Claude Code anew. The
-// gateway's tests run without the interactive mode's shim (no-shim), which
-// hid that startRun refused a ReClaude run: the shim is at hand here, as it
-// is in a real gateway, and a turn goes through.
+// With ReClaude on and its config folder not known (no ~/.rec here), every
+// Claude run is -p whatever the interactive mode's switch says: the
+// helper couldn't find the transcript, and under the interactive mode
+// (claudeTUIOn) a -p run is refused and never reused, so each of a
+// conversation's turns would start a Claude Code anew. The gateway's tests
+// run without the interactive mode's shim (no-shim), which hid that
+// startRun refused a ReClaude run: the shim is at hand here, as it is in a
+// real gateway, and a turn goes through.
 func TestReClaudeRunsAsPrint(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake launcher is a shell script")

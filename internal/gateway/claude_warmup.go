@@ -106,7 +106,7 @@ func askClaudeTUI(ctx context.Context, binary claudeCLI, configDir, model string
 	}
 	// the folder is magpie's own: asked whether to trust it, say yes
 	env = append(env, claudetui.TrustEnv+"=1")
-	cmd.Env = binary.tuiEnv(binary.env(binary.asRoot(env), configDir), configDir)
+	cmd.Env = binary.tuiEnv(ctx, binary.env(binary.asRoot(env), configDir), configDir)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err

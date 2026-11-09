@@ -345,6 +345,13 @@ func (s *shim) ready() error {
 	answered := 0
 	prompted := false
 	var yesAt, downAt time.Time
+	// downMark is how much had been drawn when ↓ was last pressed: what
+	// is drawn after it is that key's redraw, -1 with none pressed.
+	// drawnLength and drawnAt say when the screen last changed: ↓ waits
+	// for it to be still trustSettle, so the redraw after the key is the
+	// key's and not one Claude Code makes as it starts listening
+	downMark, drawnLength := -1, -1
+	var drawnAt time.Time
 	for {
 		p := s.plain()
 		switch {
@@ -359,9 +366,24 @@ func (s *shim) ready() error {
 			// first. A key sent as the question is first drawn can be lost
 			// to its being drawn again on No, so Enter goes only to a Yes
 			// drawn trustSettle ago and not drawn over since.
+			// Claude Code 2.1.318 redraws only the ❯ as the choice moves,
+			// never "❯ Yes, I trust" whole, and ↓ goes round the two
+			// choices. As it starts listening it redraws the ❯ on No the
+			// same way, which a key sent then is lost to: ↓ waits for the
+			// screen to be still, so a ❯ drawn after it, with no "❯ No,
+			// exit" drawn since, is its move to Yes. A ↓ that was lost
+			// draws nothing, and is pressed again a second on.
+			if len(p) != drawnLength {
+				drawnLength, drawnAt = len(p), time.Now()
+			}
 			no, yes := lastAt(trustNo, p), lastAt(trustYes, p)
+			moved := yes > no
+			if !moved && downMark >= 0 && downMark <= len(p) {
+				sinceDown := p[downMark:]
+				moved = strings.Contains(sinceDown, "❯") && !trustNo.MatchString(sinceDown)
+			}
 			switch {
-			case yes > no:
+			case moved:
 				if yesAt.IsZero() {
 					yesAt = time.Now()
 				}
@@ -369,13 +391,14 @@ func (s *shim) ready() error {
 					break
 				}
 				answered++
-				yesAt = time.Time{}
+				yesAt, downMark = time.Time{}, -1
 				s.clearScreen()
 				_, _ = io.WriteString(s.pty, "\r")
 			case no >= 0:
 				yesAt = time.Time{}
-				if time.Since(downAt) >= time.Second {
+				if time.Since(drawnAt) >= trustSettle && time.Since(downAt) >= time.Second {
 					downAt = time.Now()
+					downMark = len(p)
 					_, _ = io.WriteString(s.pty, "\x1b[B")
 				}
 			}

@@ -1024,7 +1024,8 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	// runs them interactively. A run it can't take is refused, never made
 	// -p: a refused request never ran, and isn't the last run
 	tui, code := claudeTUI(req, binary)
-	// a ReClaude run is -p by design (claudeMachineWhy), not one refused
+	// a ReClaude run whose config folder isn't known is -p
+	// (claudeMachineWhy), not one refused
 	if !tui && code != "off" && code != "no-shim" && code != "reclaude" {
 		cleanup()
 		return nil, nil, &tuiRefusal{claudeTUIErr(claudeNotTUIWhy(req, binary))}
@@ -1075,7 +1076,7 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	}
 	cmd.Env = binary.env(binary.asRoot(env), configDir)
 	if tui {
-		cmd.Env = binary.tuiEnv(cmd.Env, configDir)
+		cmd.Env = binary.tuiEnv(ctx, cmd.Env, configDir)
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -1242,8 +1243,8 @@ var claudeTUIRuns = true
 // (ClaudeMode.Last).
 func claudeTUI(req *Request, binary claudeCLI) (bool, string) {
 	code, why := claudePrint(req, binary)
-	// a ReClaude run is -p by design, not a line in the log each time
-	if why != "" && code != "no-shim" && code != "reclaude" {
+	// a ReClaude run whose config folder isn't known says so each time
+	if why != "" && code != "no-shim" {
 		log.Printf("claude: not the interactive mode: %s", why)
 	}
 	return why == "", code
@@ -1286,7 +1287,7 @@ func claudeMachineWhy(binary claudeCLI) (code, why string) {
 		{runtime.GOOS != "darwin" && runtime.GOOS != "linux" && runtime.GOOS != "windows", "os", runtime.GOOS},
 		{binary.wsl == nil && binary.path == "", "missing", "no Claude Code path"},
 		{settings.Load().ClaudePrintMode, "off", "the interactive mode is turned off"},
-		{settings.Load().ReClaude, "reclaude", "ReClaude's launcher runs Claude Code as claude -p"},
+		{settings.Load().ReClaude && provider.ReClaudeConfigDir() == "", "reclaude", "ReClaude's config folder isn't known, so its transcripts can't be read"},
 	} {
 		if c.is {
 			return c.code, c.why
@@ -1421,21 +1422,29 @@ func (c claudeCLI) tuiCommand(ctx context.Context, args ...string) (*exec.Cmd, e
 }
 
 // tuiEnv is env with what the helper is told: how to run Claude Code in
-// WSL.
-func (c claudeCLI) tuiEnv(env []string, configDir string) []string {
+// WSL, and the config folder a ReClaude run's Claude Code keeps its
+// transcripts in. The launcher sets that folder for Claude Code alone, and
+// magpie's own CLAUDE_CONFIG_DIR was taken out (cleanReClaudeEnv), so the
+// helper would wait for the transcript in ~/.claude.
+func (c claudeCLI) tuiEnv(ctx context.Context, env []string, configDir string) []string {
 	if c.wsl != nil {
 		env = append(env, claudetui.WSLEnv+"="+c.tuiWSL(configDir))
+	}
+	if provider.ReClaudeFrom(ctx) {
+		if reClaudeConfigDir := provider.ReClaudeConfigDir(); reClaudeConfigDir != "" {
+			env = append(env, "CLAUDE_CONFIG_DIR="+reClaudeConfigDir)
+		}
 	}
 	return env
 }
 
 // claudeTUIOn is whether a Claude subscription's model requests run in
 // Claude Code's interactive mode, and never as -p: the user hasn't turned
-// it off (ClaudePrintMode) or put Claude on ReClaude, whose launcher's
-// runs are -p (claudeMachineWhy), and magpie has its shim (claudeTUIRuns).
+// it off (ClaudePrintMode), ReClaude's config folder is known when Claude
+// is on ReClaude (claudeMachineWhy), and magpie has its shim (claudeTUIRuns).
 func claudeTUIOn() bool {
 	s := settings.Load()
-	return claudeTUIRuns && !s.ClaudePrintMode && !s.ReClaude
+	return claudeTUIRuns && !s.ClaudePrintMode && !(s.ReClaude && provider.ReClaudeConfigDir() == "")
 }
 
 // claudeNotTUIWhy is why a run isn't the interactive mode.
