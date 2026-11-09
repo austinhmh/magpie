@@ -1,0 +1,22 @@
+internal/gateway/claude_cut_stream_test.go
+  h_c1597aba944e30 33-34,86,99,110,114-116,128,132-133,153,174,193,213
+internal/gateway/claude_refusal_fallback_test.go
+  h_c1597aba944e30 131,168,184
+internal/gateway/claude_subscription.go
+  h_c1597aba944e30 3137,3142,3270,3282
+internal/gateway/claude_text_calls_test.go
+  h_c1597aba944e30 100,141,153,237,254
+internal/gateway/reasoning_state_anthropic_test.go
+  h_c1597aba944e30 234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e881202ee1e7aa870a75620ac6972228ef61da7",
+  "prompts": {},
+  "humans": {
+    "h_c1597aba944e30": {
+      "author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
