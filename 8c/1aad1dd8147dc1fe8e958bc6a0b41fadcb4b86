@@ -1,0 +1,35 @@
+internal/gateway/claude_text_calls_test.go
+  h_c1597aba944e30 100,141,153,237,254
+internal/gateway/reasoning_state_anthropic_test.go
+  h_c1597aba944e30 234
+internal/gateway/claude_refusal_fallback_test.go
+  h_c1597aba944e30 131,168,184
+internal/gateway/claude_mcp_down_test.go
+  s_d2dbf8cf7066b0::t_f0ae8a99b4bbf1 85,161
+  s_d2dbf8cf7066b0::t_33166f27622b9c 121
+internal/gateway/claude_cut_stream_test.go
+  h_c1597aba944e30 33-34,86,99,110,114-116,128,132-133,153,174,193,213
+internal/gateway/claude_subscription.go
+  h_c1597aba944e30 3137,3142,3270,3282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8c1aad1dd8147dc1fe8e958bc6a0b41fadcb4b86",
+  "prompts": {},
+  "humans": {
+    "h_c1597aba944e30": {
+      "author": "mi <mi@miMacBook-Pro.local>"
+    }
+  },
+  "sessions": {
+    "s_d2dbf8cf7066b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "56a2016f-d034-41d0-85ae-7c49cb12ccfe",
+        "model": "model-syr9n5"
+      },
+      "human_author": null
+    }
+  }
+}
