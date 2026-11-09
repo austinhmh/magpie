@@ -740,7 +740,9 @@ row.
 A turn the interactive mode can't take ends the run, and the next starts
 anew: a turn that takes earlier turns back, an effort change. A run given up on
 (`letGo`) is not taken back, since the interactive mode can't answer a
-control request to stop a turn.
+control request to stop a turn; it leaves a copy of its session cut before
+the turn on the shelf first (`shelveGivenUp`, see
+[A turn the client gives up on](#a-turn-the-client-gives-up-on-letgo-780-1365)).
 
 A config folder whose onboarding isn't done (one only `-p` ran in, or
 the account Claude Code is signed in to where `claude` was never run,
@@ -1259,6 +1261,20 @@ tool_result message and telling the results again as text, which wasn't
 done: the reporter's requests aren't known, and a fork that took the
 lead's calls (`claimResume`) looks the same from here. The log now says
 which run ended and why.
+
+An interactive run can't be taken back. Before `letGo` ends it, it cuts a
+copy of the run's session before the turn (`shelveGivenUp`, `cutReply` at
+`backLine`/`backMsg`, as `retryBranch` does) and puts it on the shelf at
+`backKey`, logged "waits on the shelf as a copy of its session". The turn
+sent again is unshelved: a new interactive run resumes the copy and is told
+only the turn. A run started from a shelved session keeps that session's
+last line as its `backLine` (`savedSession.lastLine`, `lastMsg`), so a
+second interrupt leaves a copy too. Before, each interrupt had the turn
+told whole to a new Claude Code (11-09, ReClaude: 245K tokens written to
+the cache, then 60K on each of two interrupts in a row). A run started for
+the turn, not from a saved session, has nothing before the turn to cut at
+and is still ended. `TestClaudeInteractiveTurnGivenUpOnGoesOnFromACopyOfItsSession`
+covers two interrupts in a row.
 
 ### One key per waiting run
 

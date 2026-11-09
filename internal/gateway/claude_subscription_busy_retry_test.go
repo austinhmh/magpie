@@ -63,6 +63,11 @@ while read -r line; do
     sleep 60
     continue
   fi
+  if [ -n "$resumed" ] && [ -n "$FAKE_HOLD_RESUMED" ] && [ $n = 1 ] && [ ! -e "$FAKE_HOLD_RESUMED" ]; then
+    : > "$FAKE_HOLD_RESUMED"
+    sleep 60
+    continue
+  fi
   echo '{"type":"user","uuid":"ask-'$n'","sessionId":"'$sid'"}' >> "$file"
   echo '{"type":"assistant","uuid":"line-'$n'","sessionId":"'$sid'","message":{"id":"m'$n'","model":"claude-sonnet-5"}}' >> "$file"
   echo '{"type":"stream_event","event":{"type":"message_start","message":{"id":"m'$n'","model":"claude-sonnet-5","usage":{"input_tokens":1}}}}'

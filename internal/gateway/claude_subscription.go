@@ -1406,6 +1406,11 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		from.taken()
 		run.mu.Lock()
 		run.sessionID = from.session
+		if from.tui && from.key != "" {
+			// the turn goes on after the session's last line: given up
+			// on, it is cut back to there (shelveGivenUp)
+			run.backKey, run.backLine, run.backMsg = from.key, from.lastLine, from.lastMsg
+		}
 		run.mu.Unlock()
 	}
 	line, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": prompt}})
@@ -2601,6 +2606,12 @@ type savedSession struct {
 	// is cut after: the run that takes it resumes a copy of the session
 	// as far as that line (cutSession), and the file stays the run's
 	cut string
+	// lastLine and lastMsg are the session's last line and reply as it was
+	// shelved: a turn told to the interactive run that resumes it goes on
+	// after them, and is cut back to them if the client gives up on it
+	// (shelveGivenUp)
+	lastLine string
+	lastMsg  string
 	// tui: the session was made by Claude Code's interactive mode; a
 	// branch of it is too, where it can be (claudePrint)
 	tui bool
@@ -2631,18 +2642,26 @@ func (b *subscriptionBridge) shelve(run *subscriptionRun) {
 	}
 	key := run.idleKey
 	s := &savedSession{session: sid, sessions: sessions, owner: run.owned(), conv: run.convKey, key: key, behind: run.behindKey, loose: run.loose, tools: tools, at: run.idleAt, cachePrefix: run.cachePrefix, appended: run.appended}
+	s.lastLine, s.lastMsg = run.lastLine, run.lastMsg // where a turn after it begins
 	if run.tui {
 		s.behindLine, s.behindMsg = run.behindLine, run.behindMsg
 	} else {
 		s.behindTurn = run.behindTurn
 	}
+	b.keepOnShelf(key, s)
+	run.mu.Lock()
+	run.shelved = true
+	run.mu.Unlock()
+}
+
+// keepOnShelf puts s on the shelf at key (b.mu held), in place of what
+// was there, until idleLongest after s.at, the longest waiting let go
+// past shelfMost.
+func (b *subscriptionBridge) keepOnShelf(key string, s *savedSession) {
 	if old := b.shelf[key]; old != nil {
 		go old.discard()
 	}
 	b.shelf[key] = s
-	run.mu.Lock()
-	run.shelved = true
-	run.mu.Unlock()
 	s.timer = time.AfterFunc(idleLongest-time.Since(s.at), func() {
 		b.mu.Lock()
 		if b.shelf[key] == s {
@@ -3300,6 +3319,9 @@ func (r *subscriptionRun) letGo() {
 	}
 	r.mu.Unlock()
 	if !can {
+		if r.tui && r.bridge != nil {
+			r.bridge.shelveGivenUp(r)
+		}
 		r.abortFor("the client went away during a turn it can't take back")
 		return
 	}
@@ -3327,6 +3349,37 @@ func (r *subscriptionRun) letGo() {
 	r.mu.Unlock()
 	r.endIn(idleLongest)
 	log.Printf("claude: the turn the client gave up on was taken back; its run waits for the conversation's next turn")
+}
+
+// shelveGivenUp keeps, for the client's next request, a copy of an
+// interactive run's session cut before the turn the client gave up on
+// (backLine, backMsg, as retryBranch cuts one): the interactive mode
+// can't be taken back, the run is let go with its file, and the turn sent
+// again was told whole to a new Claude Code, the conversation written to
+// the cache again (11-09: 245K tokens, then 60K on each of two interrupts
+// in a row). The copy waits on the shelf at the conversation before the
+// turn (backKey), where unshelve finds the turn sent again; the run that
+// resumes it is told only the turn. Nothing when the run was started for
+// the turn and not from a saved session (no backKey or line), has no
+// session on disk, or the client places its own cache marks.
+func (b *subscriptionBridge) shelveGivenUp(r *subscriptionRun) {
+	r.mu.Lock()
+	back, backLine, backMsg := r.backKey, r.backLine, r.backMsg
+	sid, sessions, marks, tools := r.sessionID, slices.Clone(r.sessions), r.clientMarks, maps.Clone(r.tools)
+	r.mu.Unlock()
+	if back == "" || backLine == "" && backMsg == "" || sid == "" || len(sessions) == 0 || marks {
+		return
+	}
+	cut, err := cutReply(sessions, sid, backLine, backMsg)
+	if err != nil {
+		log.Printf("claude: the interactive run's session couldn't be cut before the turn the client gave up on (%v)", err)
+		return
+	}
+	s := &savedSession{session: cut, sessions: sessions, owner: r.owned(), conv: r.convKey, key: back, tools: tools, at: time.Now(), lastLine: backLine, lastMsg: backMsg, tui: true, appended: r.appended, cachePrefix: r.cachePrefix}
+	b.mu.Lock()
+	b.keepOnShelf(back, s)
+	b.mu.Unlock()
+	log.Printf("claude: the turn the client gave up on in an interactive run waits on the shelf as a copy of its session, cut before the turn")
 }
 
 // rewind tells the run's Claude Code to take its conversation back to
