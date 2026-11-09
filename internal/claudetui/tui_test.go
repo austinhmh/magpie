@@ -333,6 +333,7 @@ func fakeClaude(args []string) {
 		time.AfterFunc(d, func() { _ = os.WriteFile(listed, nil, 0o600) })
 	}
 	streams := 0
+	escDone := false
 	fmt.Print("\r\n❯ ")
 	// the prompt's words, and the prompt as drawn, again as a paste
 	// starts and as one is taken in. As Claude Code 2.1.318 does, it draws
@@ -486,6 +487,35 @@ func fakeClaude(args []string) {
 				}
 			}
 			fakeFrames(b)
+			continue
+		}
+		// FAKE_ESC: the first message's reply goes on until Esc, drawn as
+		// a turn going, and ends as Claude Code 2.1.318 ended one on
+		// 11-09: the reply so far, then "[Request interrupted by user]",
+		// and no turn_duration; "duration" writes one after it all the same
+		if v := os.Getenv("FAKE_ESC"); v != "" && !escDone {
+			escDone = true
+			f, _ := os.OpenFile(filepath.Join(dir, sid+".jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+			for _, row := range []any{
+				map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": line}},
+				map[string]any{"type": "assistant", "requestId": "req_esc", "message": map[string]any{"id": "msg_esc", "model": "claude-haiku", "role": "assistant",
+					"content": []any{map[string]any{"type": "text", "text": "1\n2\n3\n"}}}},
+			} {
+				b, _ := json.Marshal(row)
+				_, _ = f.Write(append(b, '\n'))
+			}
+			fmt.Print("\r\n✻ Counting… (esc to interrupt)\r\n")
+			for c, err := r.ReadByte(); c != 0x1b; c, err = r.ReadByte() {
+				if err != nil {
+					return
+				}
+			}
+			_, _ = f.WriteString(`{"type":"user","interruptedMessageId":"msg_esc","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}` + "\n")
+			if v == "duration" {
+				_, _ = f.WriteString(`{"type":"system","subtype":"turn_duration"}` + "\n")
+			}
+			f.Close()
+			fmt.Print("\r\n❯ ")
 			continue
 		}
 		f, _ := os.OpenFile(filepath.Join(dir, sid+".jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
@@ -1018,6 +1048,34 @@ func TestShimTrustsWhenTold(t *testing.T) {
 	if out[0]["subtype"] != "init" || out[1]["type"] != "assistant" {
 		t.Fatalf("got %v, want an interactive turn", out)
 	}
+}
+
+// The bridge's interrupt is Esc: the reply going ends, its words kept in
+// the session, and the next message goes on in the same Claude Code. One
+// result is told for the stopped turn, a turn_duration after its mark or
+// not, and an interrupt with no turn going presses nothing.
+func TestShimInterruptStopsTheTurn(t *testing.T) {
+	interrupt := `raw:{"type":"control_request","request_id":"i1","request":{"subtype":"interrupt"}}`
+	for _, v := range []string{"1", "duration"} {
+		t.Run(v, func(t *testing.T) {
+			out := runShim(t, []string{"FAKE_ESC=" + v}, append([]string{fakePath(t)}, pArgs...), []string{"count", interrupt, "again"}, 6)
+			if out[1]["type"] != "assistant" || out[2]["type"] != "result" || out[2]["is_error"] != true {
+				t.Fatalf("the stopped turn: %v", out)
+			}
+			if resp, _ := out[3]["response"].(map[string]any); out[3]["type"] != "control_response" || resp["subtype"] != "success" {
+				t.Fatalf("the interrupt's answer: %v", out)
+			}
+			if out[4]["type"] != "assistant" || out[5]["type"] != "result" || out[5]["is_error"] != false {
+				t.Fatalf("the next message, after the stop: %v", out)
+			}
+		})
+	}
+	t.Run("idle", func(t *testing.T) {
+		out := runShim(t, nil, append([]string{fakePath(t)}, pArgs...), []string{"hello", interrupt}, 4)
+		if resp, _ := out[3]["response"].(map[string]any); out[3]["type"] != "control_response" || resp["subtype"] != "success" {
+			t.Fatalf("an interrupt with no turn going: %v", out)
+		}
+	})
 }
 
 // Claude Code 2.1.318 redraws only the ❯ as the choice moves: the helper

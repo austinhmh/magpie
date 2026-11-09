@@ -58,6 +58,9 @@ var (
 	// rows of one message are written together: a message is whole once
 	// none of its rows came for this long, or anything else did
 	messageQuiet = 150 * time.Millisecond
+	// interruptWait is how long Claude Code may take to end a turn after
+	// Esc (interrupt), under the bridge's own wait for the answer
+	interruptWait = 8 * time.Second
 )
 
 type shim struct {
@@ -754,7 +757,15 @@ func (s *shim) input(r io.Reader) error {
 		switch m.Type {
 		case "control_request":
 			resp := map[string]any{"subtype": "success", "request_id": m.RequestID, "response": map[string]any{}}
-			if m.Request.Subtype != "initialize" {
+			switch m.Request.Subtype {
+			case "initialize":
+			case "interrupt":
+				// the client gave up on the turn: Esc ends it as its user
+				// would, and its words stay in the session
+				if err := s.interrupt(); err != nil {
+					resp = map[string]any{"subtype": "error", "request_id": m.RequestID, "error": err.Error()}
+				}
+			default:
 				resp = map[string]any{"subtype": "error", "request_id": m.RequestID,
 					"error": "Claude Code's interactive mode takes no " + m.Request.Subtype + " request"}
 			}
@@ -782,6 +793,43 @@ func (s *shim) input(r io.Reader) error {
 		}
 	}
 	return sc.Err()
+}
+
+// escBusy is what Claude Code draws under a turn going (2.1.318): Esc
+// still has a turn to stop. A second Esc with none going opens its
+// rewind menu, so one is pressed again only while this is drawn.
+var escBusy = regexp.MustCompile(`(?i)esc to interrupt`)
+
+// interrupt ends the turn going, as its user does: Esc, and again a
+// second on while the turn is still drawn as going (a key Claude Code
+// was too busy to take). It is over once the transcript says the turn
+// ended (the translator's turnOver on its interrupted row, or the turn's
+// turn_duration); nothing is pressed when no turn is going.
+func (s *shim) interrupt() error {
+	by := time.After(interruptWait)
+	var pressed time.Time
+	for {
+		s.rowsMu.Lock()
+		busy := s.busy
+		s.rowsMu.Unlock()
+		if !busy {
+			return nil
+		}
+		now, _ := s.looks()
+		if pressed.IsZero() || time.Since(pressed) >= time.Second && escBusy.MatchString(now) {
+			if _, err := io.WriteString(s.pty, "\x1b"); err != nil {
+				return err
+			}
+			pressed = time.Now()
+		}
+		select {
+		case <-s.exited:
+			return fmt.Errorf("Claude Code ended (%v): %s", s.exit, s.lastScreen())
+		case <-by:
+			return fmt.Errorf("Claude Code hadn't ended its turn %s after Esc: %s", interruptWait, s.lastScreen())
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 }
 
 // how long a command's panel may take to be drawn, and how long it stays

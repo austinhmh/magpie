@@ -18,6 +18,11 @@ import (
 // waits on the shelf, and the resend's run resumes it, told only the
 // turn; a run started from that copy and given up on again leaves one too.
 func TestClaudeInteractiveTurnGivenUpOnGoesOnFromACopyOfItsSession(t *testing.T) {
+	// its Claude Code is asleep in the turn and takes no interrupt: the
+	// run that can't be stopped leaves a copy of its session (stopTUI)
+	was := interruptLongest
+	interruptLongest = 300 * time.Millisecond
+	t.Cleanup(func() { interruptLongest = was })
 	h := newBusyRetryHarness(t, "interactive")
 	logs := keepLog(t)
 	// the first run resumed from a copy holds its turn, as the first

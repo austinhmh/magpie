@@ -1413,6 +1413,15 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		}
 		run.mu.Unlock()
 	}
+	if run.tui {
+		run.mu.Lock()
+		if run.backKey == "" {
+			// a run started for the turn waits at the conversation before
+			// it when the client gives up on the turn (letGo, stopTUI)
+			run.backKey, _ = nextTurn(req, owner)
+		}
+		run.mu.Unlock()
+	}
 	line, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": prompt}})
 	if err := run.tell(line); err != nil {
 		run.abort()
@@ -3285,6 +3294,10 @@ func (b *subscriptionBridge) sweepSessions(dirs []string) {
 // before its run is let go.
 var rewindLongest = 10 * time.Second
 
+// interruptLongest is how long an interactive run may take to stop a turn
+// the client gave up on (stopTUI) before it is let go.
+var interruptLongest = 10 * time.Second
+
 // controlReply is Claude Code's control_response to a control request.
 type controlReply struct {
 	Subtype   string `json:"subtype"`
@@ -3302,23 +3315,31 @@ type controlReply struct {
 // resend to go on from the prefix it cached. That holds in the reply to
 // the turn's tool results too (#1365): the turn is taken back whole, its
 // tool rounds with it, and the client's next request is told the turn
-// since its user message, not the whole conversation. Any other run — one
-// started for the turn, one with a tool call in the client's hands, one
-// whose Claude Code refuses or doesn't answer — is ended, as before.
+// since its user message, not the whole conversation. An interactive run
+// (claudeTUI), which can't be taken back, is stopped instead (stopTUI).
+// Any other run — one started for the turn, one with a tool call in the
+// client's hands, one whose Claude Code refuses or doesn't answer — is
+// ended, as before.
 func (r *subscriptionRun) letGo() {
 	r.mu.Lock()
 	turn, back := r.turnUUID, r.backKey
 	// the interactive mode (claudeTUI) can't be taken back
 	can := !r.closed && !r.tui && r.stdin != nil && r.bridge != nil && r.timer != nil &&
 		turn != "" && back != "" && len(r.pending) == 0 && r.rewinding == nil
+	// it is stopped instead (stopTUI), its calls in the client's hands too
+	stop := !r.closed && r.tui && r.stdin != nil && r.bridge != nil && r.timer != nil &&
+		back != "" && r.rewinding == nil
 	done := make(chan struct{})
 	if can {
 		r.rewinding = done
 		r.turnUUID, r.backKey = "", "" // once a turn
 		r.rewound, r.replied = true, false
 	}
+	if stop {
+		r.rewinding = done
+	}
 	r.mu.Unlock()
-	if !can {
+	if !can && !stop {
 		if r.tui && r.bridge != nil {
 			r.bridge.shelveGivenUp(r)
 		}
@@ -3338,6 +3359,10 @@ func (r *subscriptionRun) letGo() {
 	if !r.bridge.keepIdle(r, back, "") {
 		return // it ended since (#1667): there is nothing to take back
 	}
+	if stop {
+		r.stopTUI()
+		return
+	}
 	if err := r.rewind(turn); err != nil {
 		log.Printf("claude: a turn the client gave up on could not be taken back, its run let go: %v", err)
 		r.abortFor("a turn the client gave up on could not be taken back: " + err.Error())
@@ -3349,6 +3374,51 @@ func (r *subscriptionRun) letGo() {
 	r.mu.Unlock()
 	r.endIn(idleLongest)
 	log.Printf("claude: the turn the client gave up on was taken back; its run waits for the conversation's next turn")
+}
+
+// stopTUI stops the reply of an interactive run the client gave up on:
+// its helper presses Esc (claudetui's interrupt), Claude Code ends the
+// turn as its user would, the turn's words kept in its session ("[Request
+// interrupted by user]" after the reply so far, 2.1.318 on 11-09), and the
+// run waits at the conversation before the turn (letGo kept it there).
+// The client's resend goes on in it, told only what it sends, the prefix
+// read from the cache. Before, the run was ended and the resend told whole
+// to a new Claude Code (11-09: 17:50:04 and 17:50:44, a run started for
+// the turn each time, which had no session line to cut a copy at). Its
+// calls still in the client's hands are answered as interrupted: Claude
+// Code cancelled them with the turn. A run that doesn't stop within
+// interruptLongest is let go, a copy of its session left on the shelf
+// where it has a line to cut at (shelveGivenUp).
+func (r *subscriptionRun) stopTUI() {
+	if err := r.cliControlWithin(context.Background(), map[string]any{"subtype": "interrupt"}, interruptLongest); err != nil {
+		log.Printf("claude: an interactive turn the client gave up on could not be stopped, its run let go: %v", err)
+		r.bridge.shelveGivenUp(r)
+		r.abortFor("a turn the client gave up on could not be stopped: " + err.Error())
+		return
+	}
+	r.mu.Lock()
+	pending := r.pending
+	r.pending = map[string]chan mcpToolResult{}
+	r.turnUUID, r.backKey, r.backLine, r.backMsg = "", "", "", ""
+	r.asked, r.shown, r.parkedAt = nil, nil, time.Time{}
+	clear(r.early)
+	r.mu.Unlock()
+	interrupted := mcpToolResult{IsError: true, Content: []map[string]any{{"type": "text", "text": "The user interrupted this call."}}}
+	for _, waiter := range pending {
+		select {
+		case waiter <- interrupted:
+		default:
+		}
+	}
+	r.bridge.mu.Lock()
+	for id, run := range r.bridge.calls {
+		if run == r {
+			delete(r.bridge.calls, id)
+		}
+	}
+	r.bridge.mu.Unlock()
+	r.endIn(idleLongest)
+	log.Printf("claude: an interactive turn the client gave up on was stopped; its run waits for the conversation's next turn")
 }
 
 // shelveGivenUp keeps, for the client's next request, a copy of an

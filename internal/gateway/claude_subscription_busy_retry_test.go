@@ -21,6 +21,10 @@ import (
 // file, and answered with its pid and turn. A run resumed from a session
 // answers at once; the second turn of a run started anew holds mid-reply,
 // as one whose client went away without magpie hearing of it does (#5405).
+// With FAKE_HOLD_ESC=n (and FAKE_HOLD_ESC_AGAIN=m) the n-th (and m-th) turn
+// of every run holds instead, one started from a transcript of the
+// conversation (replaySession) too, until an interrupt, which ends it as
+// Esc ends one in Claude Code 2.1.318: "[Request interrupted by user]".
 // It says where the per-run logs are, and the log of what it was told.
 func busyRetryClaude(t *testing.T) (string, string) {
 	t.Helper()
@@ -53,13 +57,22 @@ n=0
 while read -r line; do
   case "$line" in *'"type":"control_request"'*)
     id=$(printf '%s' "$line" | sed 's/.*"request_id":"\([^"]*\)".*/\1/')
+    if [ -n "$held" ] && printf '%s' "$line" | grep -q '"subtype":"interrupt"'; then
+      echo '{"type":"user","uuid":"stop-'$n'","sessionId":"'$sid'","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}' >> "$file"
+      echo '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"interrupted"}'
+      held=
+    fi
     echo '{"type":"control_response","response":{"subtype":"success","request_id":"'$id'"}}'
     continue;;
   esac
   echo "told $line" >> $log
   echo "told $line" >> ` + told + `
   n=$((n+1))
-  if [ -z "$resumed" ] && [ $n = 2 ]; then
+  if [ -n "$FAKE_HOLD_ESC" ] && { [ $n = "$FAKE_HOLD_ESC" ] || [ "$FAKE_HOLD_ESC_AGAIN" = $n ]; }; then
+    held=1
+    continue
+  fi
+  if [ -z "$resumed" ] && [ -z "$FAKE_HOLD_ESC" ] && [ $n = 2 ]; then
     sleep 60
     continue
   fi

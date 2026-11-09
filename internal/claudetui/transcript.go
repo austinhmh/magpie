@@ -2,7 +2,37 @@ package claudetui
 
 import (
 	"encoding/json"
+	"strings"
 )
+
+// interruptMark opens the row Claude Code writes when Esc stops a turn
+// ("[Request interrupted by user]", "… for tool use]").
+const interruptMark = "[Request interrupted by user"
+
+// interruptedRow says whether a user row's message is Esc's mark.
+func interruptedRow(raw json.RawMessage) bool {
+	var m struct {
+		Content json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(raw, &m) != nil || len(m.Content) == 0 {
+		return false
+	}
+	var text string
+	if json.Unmarshal(m.Content, &text) == nil {
+		return strings.HasPrefix(text, interruptMark)
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	_ = json.Unmarshal(m.Content, &blocks)
+	for _, b := range blocks {
+		if b.Type == "text" && strings.HasPrefix(b.Text, interruptMark) {
+			return true
+		}
+	}
+	return false
+}
 
 // emitter is where a translator's lines go.
 type emitter interface {
@@ -23,6 +53,9 @@ type translator struct {
 	// the turn failed: its <synthetic> row's result is told, and the
 	// turn_duration after it says nothing more
 	failed bool
+	// the turn was stopped (Esc, shim.interrupt): its result is told, and
+	// a turn_duration after it says nothing more
+	stopped bool
 	// tap has the streams of the messages (tap.go): a message is told
 	// after its stream has begun, and a turn's end after its streams'
 	tap *tap
@@ -63,8 +96,15 @@ func (t *translator) row(b []byte) {
 			t.out.sawRow()
 		}
 	case "user":
+		if interruptedRow(r.Message) {
+			t.stopped = true
+			t.tap.settle()
+			t.out.turnOver()
+			t.out.emit(map[string]any{"type": "result", "subtype": "error_during_execution", "is_error": true, "result": "interrupted"})
+			return
+		}
 		if !r.IsMeta && isPrompt(r.Message) {
-			t.failed = false
+			t.failed, t.stopped = false, false
 			t.out.sawRow()
 		}
 		if len(r.ToolUseResult) > 0 && r.ToolUseResult[0] == '{' {
@@ -119,11 +159,11 @@ func (t *translator) row(b []byte) {
 		if r.Subtype == "turn_duration" {
 			t.tap.settle()
 		}
-		if r.Subtype == "turn_duration" && !t.failed {
+		if r.Subtype == "turn_duration" && !t.failed && !t.stopped {
 			t.out.emit(map[string]any{"type": "result", "subtype": "success", "is_error": false})
 		}
 		if r.Subtype == "turn_duration" {
-			t.failed = false
+			t.failed, t.stopped = false, false
 			t.out.turnOver()
 		}
 	}
