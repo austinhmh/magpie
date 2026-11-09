@@ -1,0 +1,48 @@
+internal/gateway/claude_tui_given_up_test.go
+  s_d2dbf8cf7066b0::t_a3e4d6d78dd6b8 21-25
+docs/subsystems/claude-subscription-bridge.md
+  s_d2dbf8cf7066b0::t_4a9d808675178c 1266-1303
+  s_d2dbf8cf7066b0::t_b6d19f47cba7bc 742-745
+internal/claudetui/transcript.go
+  s_d2dbf8cf7066b0::t_792061cf5fdfc2 5,8-35
+  s_d2dbf8cf7066b0::t_ea787047e94d18 99-105,107
+  s_d2dbf8cf7066b0::t_a721a77bb676a4 36
+  s_d2dbf8cf7066b0::t_0980903d3483d5 162,166
+  s_d2dbf8cf7066b0::t_4845829379f4f9 56-58
+internal/claudetui/tui_test.go
+  s_d2dbf8cf7066b0::t_6b4bfdc026b0d6 492-520
+  s_d2dbf8cf7066b0::t_e148c61bf4bb93 1053-1080
+  s_d2dbf8cf7066b0::t_58042623006972 336
+internal/claudetui/tui.go
+  s_d2dbf8cf7066b0::t_2216fd89045405 798-834
+  s_d2dbf8cf7066b0::t_1c593f1a47d8cc 61-63
+  s_d2dbf8cf7066b0::t_09553ee21d4012 760-768
+internal/gateway/claude_subscription_busy_retry_test.go
+  s_d2dbf8cf7066b0::t_93a8a021ef3061 60-64,71-75
+  s_d2dbf8cf7066b0::t_116a0ca89be519 24-27
+internal/gateway/claude_tui_stop_test.go
+  s_d2dbf8cf7066b0::t_a296f91d18e29d 1-125
+internal/gateway/claude_subscription.go
+  s_d2dbf8cf7066b0::t_103d4b940e3d05 3362-3365
+  s_d2dbf8cf7066b0::t_955e979b76d51a 3379-3423
+  s_d2dbf8cf7066b0::t_e2a62444af71ca 1416-1424
+  s_d2dbf8cf7066b0::t_646cea5493aede 3297-3300
+  s_d2dbf8cf7066b0::t_c7d2ba7c37992f 3318-3322
+  s_d2dbf8cf7066b0::t_9103b332d12bb9 3329-3331,3338-3340,3342
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6f7ab1714f95c6ec7c7daf34eca49ea2d32d6465",
+  "prompts": {},
+  "sessions": {
+    "s_d2dbf8cf7066b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "56a2016f-d034-41d0-85ae-7c49cb12ccfe",
+        "model": "model-syr9n5"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
