@@ -179,13 +179,21 @@ func keepAliveClean(t *testing.T) {
 func TestRenewLoginsKeepsClaudeReading(t *testing.T) {
 	claudeThree(t)
 	keepAliveClean(t)
+	// the reporter's lines, their reset three days on: as written (Nov 6),
+	// the week read as renewed, used 0, once Nov 6 had passed
+	dubai, err := time.LoadLocation("Asia/Dubai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reset := time.Now().In(dubai).Add(72*time.Hour).Format("Jan 2 at 3pm") + " (Asia/Dubai)"
+	weeklyOnly := strings.ReplaceAll(claudeWeeklyOnly, "Nov 6 at 11am (Asia/Dubai)", reset)
 	var text atomic.Value
-	text.Store(claudeWeeklyOnly)
+	text.Store(weeklyOnly)
 	fakeClaudeUsage(t, &text, nil)
 	runs := atomic.Int32{}
 	UsageClaudeVia(func(_ context.Context, dir string) (string, error) {
 		runs.Add(1)
-		return strings.Replace(claudeWeeklyOnly, "(all models): 1%", "(all models): 37%", 1), nil
+		return strings.Replace(weeklyOnly, "(all models): 1%", "(all models): 37%", 1), nil
 	})
 	max := "max@x.com"
 	var l Login
