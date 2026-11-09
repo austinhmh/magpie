@@ -42,37 +42,6 @@ func TestReClaudeConfigDirFollowsTheCurrentAccount(t *testing.T) {
 	}
 }
 
-// The launcher's own status names its data folder and current account, so
-// ReClaude's config folder is known without its ~/.rec/claude/current file.
-func TestReClaudeConfigDirComesFromTheLaunchersStatus(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the fake launcher is a shell script")
-	}
-	limitsHome(t)
-	t.Setenv("MAGPIE_NO_ACCOUNTS", "")
-	dataDir := t.TempDir()
-	configDir := filepath.Join(dataDir, "claude", "accounts", "777", "config")
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("FAKE_RECLAUDE_DATA_DIR", dataDir)
-	launcherDirectory := t.TempDir()
-	testenv.Program(t, filepath.Join(launcherDirectory, "reclaude"), `#!/bin/sh
-if [ "$1" != status ]; then exit 2; fi
-printf '{"checked":true,"global":{"data_dir":"%s","daemon":{"status":{"state":"reachable"}}},"claude":{"current":{"device_id":777}}}\n' "$FAKE_RECLAUDE_DATA_DIR"
-`)
-	t.Setenv("PATH", launcherDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if err := SetReClaude(true); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ReClaudeBinary(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if got := ReClaudeConfigDir(); got != configDir {
-		t.Fatalf("ReClaudeConfigDir() = %q, want the status's %q", got, configDir)
-	}
-}
-
 func TestReClaudeStatusChecksLiveDaemonHealth(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake launcher is a shell script")

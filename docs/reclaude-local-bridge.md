@@ -239,9 +239,8 @@ not a confirmed root-cause fix. If an agent judges by content or signature
 rather than by file identity, only adding the binary to the agents'
 trust list (through the machine's IT) will resolve it. The interactive
 mode's helper (`magpie claude-tui-helper`, `tuiCommand`) still starts from
-`os.Executable()`. Since 11-09 it is reached with ReClaude on too (runs
-follow the interactive mode's switch when ReClaude's config folder is
-known; see the bridge page), and routing it the same way is a follow-up.
+`os.Executable()`; it is not reached with ReClaude on (runs are `claude -p`),
+and routing it the same way is a follow-up.
 
 Sources: [claude_helper_exe.go](../internal/gateway/claude_helper_exe.go),
 [claude_subscription.go](../internal/gateway/claude_subscription.go).

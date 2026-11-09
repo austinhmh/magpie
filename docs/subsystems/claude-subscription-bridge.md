@@ -22,21 +22,13 @@ waiting for a process slot, so a disabled source is not started from a
 queued request. A failure never falls through to a personal Claude account.
 Model probes and allowance reads use the same launcher and a per-call
 source context. The MCP callback, turn/session handling and protocol
-translation stay the same. Its runs follow the interactive mode's switch
-as any Claude run's do when ReClaude's config folder is known (below):
-the launcher replaces itself with the real Claude Code, which, run in the
-helper's terminal, sends its requests as the interactive mode (entrypoint
-`cli`; a probe on 11-09 with Claude Code 2.1.318 answered, streamed through
-the tap, and wrote its transcript there). `tuiEnv` tells the helper that
-folder, since the launcher sets `CLAUDE_CONFIG_DIR` for Claude Code alone
-and the helper reads the transcript from it
-(`TestReClaudeRunsInteractiveWithItsConfigDirKnown`). When the folder isn't
-known, `claudeTUIOn` is false and `claudeMachineWhy` says `reclaude`
-("ReClaude's config folder isn't known"), logged on each run: the run is
-`-p`, never refused for not being interactive, kept for its conversation's
-next turn, and the provider editor's "Claude Code runs as" row says every
-request runs as claude -p through ReClaude (`TestReClaudeRunsAsPrint`,
-`claude-mode.test.cjs`). Until 11-09 every ReClaude run was `-p`.
+translation stay the same. Its runs are always `claude -p`: ReClaude's
+launcher hasn't been run in Claude Code's interactive mode, so with
+ReClaude on `claudeTUIOn` is false and `claudeMachineWhy` says
+`reclaude`. A request is never refused for not being interactive, a `-p`
+run is kept for its conversation's next turn, and the provider editor's
+"Claude Code runs as" row says every request runs as claude -p through
+ReClaude (`TestReClaudeRunsAsPrint`, `claude-mode.test.cjs`).
 ReClaude's daemon ports are not OpenAI-compatible upstreams; its FAQ does
 not support third-party API-key clients, so this is a local integration,
 not an officially supported ReClaude API.
@@ -108,12 +100,8 @@ manages its own connection and config. No health cache or background probe
 is needed, and the ordinary Claude environment remains unchanged.
 
 The launcher runs Claude Code in its own config folder,
-`<data_dir>/claude/accounts/<device_id>/config` (`provider.ReClaudeConfigDir`).
-`data_dir` and `claude.current.device_id` are read from the
-`reclaude status --check --json` every run already asks for
-(`ReClaudeBinary`, which keeps them until its next read). An older launcher
-without them falls back to the account named in `~/.rec/claude/current`
-(`TestReClaudeConfigDirComesFromTheLaunchersStatus`,
+`~/.rec/claude/accounts/<id>/config` for the account named in
+`~/.rec/claude/current` (`provider.ReClaudeConfigDir`,
 `TestReClaudeConfigDirFollowsTheCurrentAccount`). A ReClaude run's
 sessions are kept there, so `startRun` looks for them there, not in
 `~/.claude`. Before, magpie looked in `~/.claude` and never found them, so a
@@ -344,24 +332,13 @@ with backoff, so the chat hung (lwjef on X).
 sent as it is first drawn can be lost to its being drawn again, so the
 helper presses ↓ until "Yes" is the last choice drawn and Enter only once
 it has stayed so for 300ms (`ready`, `trustSettle`). Pressing Enter blind
-chose "No, exit" in the real gateway, and no run started. Claude Code
-2.1.318 redraws only the `❯` as the choice moves, never "❯ Yes, I trust"
-whole, and ↓ goes round the two choices: the helper pressed ↓ until its 45
-seconds ran out. It also redraws the `❯` on No alone as it starts
-listening, which a ↓ sent then is lost to; taken for the key's move, that
-redraw had Enter pressed on No (exit status 1). So ↓ waits for the screen
-to be still for `trustSettle`, and a `❯` drawn after it (`downMark`), with
-no "❯ No, exit" drawn since, counts as Yes; a ↓ that drew nothing is
-pressed again a second on (`TestShimTrustsWhenOnlyTheMarkIsRedrawn`, whose
-fake writes the bytes 2.1.318 wrote on 11-09). With 2.1.318 through
-ReClaude, two runs in new folders answered it and replied in 10s and 23s.
+chose "No, exit" in the real gateway, and no run started.
 
 Every run is `-p` only when Settings › Models › Replies › Claude Code's
 interactive mode is Off (`claudePrintMode`), while the local ReClaude
-source is on and its config folder isn't known (code `reclaude`: the
-helper couldn't read the transcript, so its runs are `-p`, kept for their
-conversation's next turn and never refused for not being interactive),
-or in the gateway's own
+source is on (code `reclaude`: ReClaude's launcher has only been run as
+`-p`, so its runs are `-p`, kept for their conversation's next turn and
+never refused for not being interactive), or in the gateway's own
 tests, whose fake Claude Codes are `-p` ones (`claudeTUIRuns`, code
 `no-shim`). With it On, nothing ever runs as `-p` (the owner, 11-01): the
 plan counts a `-p` request as another client's, at about twice the
