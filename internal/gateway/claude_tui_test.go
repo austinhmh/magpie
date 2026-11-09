@@ -43,7 +43,7 @@ func TestClaudeTUIChosen(t *testing.T) {
 		{"in WSL, its home unknown", &Request{Messages: text("hi")}, claudeCLI{path: "claude", wsl: &wslrun.Tool{Distro: "Ubuntu"}}, false, on, ""},
 		{"safeguards", &Request{Messages: text("hi"), Safeguards: json.RawMessage(`{"a":1}`)}, here, false, on, ""},
 		{"client cache marks", &Request{Messages: text("hi"), clientCache: &clientCache{}}, here, false, on, ""},
-		{"a schema", &Request{Messages: text("hi"), Format: &Format{Type: "json_schema", Schema: json.RawMessage(`{"type":"object"}`)}}, here, false, false, "a JSON schema"},
+		{"a schema", &Request{Messages: text("hi"), Format: &Format{Type: "json_schema", Schema: json.RawMessage(`{"type":"object"}`)}}, here, false, on, ""},
 		{"an image", &Request{Messages: []Message{{Role: "user", Parts: []Part{{Kind: Image, MediaType: "image/png", Data: "AA=="}}}}}, here, false, on, ""},
 		{"an image by its URL", &Request{Messages: []Message{{Role: "user", Parts: []Part{{Kind: Image, URL: "https://example.com/a.png"}}}}}, here, false, false, "an image known by its URL"},
 		{"a tool's image by its URL", &Request{Messages: []Message{{Role: "user", Parts: []Part{{Kind: ToolResult, Images: []Part{{Kind: Image, URL: "https://example.com/a.png"}}}}}}}, here, false, false, "an image known by its URL"},

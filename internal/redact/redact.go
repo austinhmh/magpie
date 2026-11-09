@@ -87,6 +87,9 @@ type Options struct {
 
 	// found are the spans Model found, by text, for one request's texts
 	found map[string][]Found
+	// args is masking a tool call's arguments (MaskJSON): the model's
+	// one-word name there is never taken for an app's (thingNamed)
+	args bool
 	// sent is masking for a vendor (Mask, MaskJSON): a text masked
 	// before on Route has the model's finds and the known values it had
 	// then (sentSpans)
@@ -136,6 +139,10 @@ type rule struct {
 	back, ahead int
 	// cat is what turns the rule on (Options.covers): "" the secrets
 	cat string
+	// field is a rule that takes a value after a field's name and = or :,
+	// a space allowed between them: a value that is the next field's
+	// assignment is not this one's (fieldMatches)
+	field bool
 	// yours is a rule the user wrote (customRules)
 	yours bool
 	// anyGroup takes the first group that matched, for a pattern with a
@@ -175,7 +182,7 @@ var rules = append([]rule{
 	{kind: "PASSWORD", re: regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s:@/?#"'<>]*:([^\s@/?#"'<>]{3,})@`), markers: []string{"://"}, ok: notAVariable, at: hiddenInURL},
 	// password = …, API_KEY: "…", as .env files and configs have them
 	{kind: "SECRET", re: regexp.MustCompile(`(?i)[A-Za-z0-9_.-]*(?:` + secretNames.pattern() + `)[A-Za-z0-9_.-]*` + quote + `[ \t]*[:=][ \t]*` + quote + `(` + secretCh + `{8,})`),
-		markers: secretNames.markers(), ok: secretValue, at: fieldAt},
+		markers: secretNames.markers(), ok: secretValue, at: fieldAt, field: true},
 	// an env var's name says what it holds in the upper case: a
 	// SERVICE_X_KEY, a DB_PASS (#2946). The names above have a word for the
 	// secret in them; these only end in one, and only in the upper case is
@@ -183,7 +190,7 @@ var rules = append([]rule{
 	// code's: a sort key, a cache key, a public key (notAPlainKey turns the
 	// upper-case ones of those away too).
 	{kind: "SECRET", re: regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])[A-Za-z0-9_.-]*_(?:KEY|PASS)` + quote + `[ \t]*[:=][ \t]*` + quote + `(` + secretCh + `{8,})`),
-		markers: fieldNames{{"key", "key"}, {"pass", "pass"}}.markers(), ok: secretValue, at: namedSecretAt},
+		markers: fieldNames{{"key", "key"}, {"pass", "pass"}}.markers(), ok: secretValue, at: namedSecretAt, field: true},
 	// an Authorization or Cookie header's value is a secret whatever it
 	// looks like: an opaque bearer token, a session value (#2946)
 	{kind: "SECRET", re: regexp.MustCompile(`(?im)^[ \t]*(?:authorization|cookie)[ \t]*:[ \t]*(\S[^\r\n]{7,})`),
@@ -192,24 +199,24 @@ var rules = append([]rule{
 	// "oc_sk_…" (#195). Only a long value of letters and digits both, since
 	// code calls anything a key: a map's "key": "value", sort_key, keyboard.
 	{kind: "SECRET", re: regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_.-])` + quote + `key` + quote + `[ \t]*[:=][ \t]*` + quote + `(` + secretCh + `{16,})`),
-		markers: fieldNames{{"key", "key"}}.markers(), ok: secretValue, at: fieldAt},
+		markers: fieldNames{{"key", "key"}}.markers(), ok: secretValue, at: fieldAt, field: true},
 	// a password after its name in Chinese, Japanese or Korean, as people
 	// write one into a message: 密码：786kih, 密碼是 hunter2, パスワード: … .
 	// Unlike password = in a config, nothing in code is called 密码, so
 	// any value of four or more is taken, digits only too (CyberCaius on
 	// Discord); a sentence's closing stop is no part of it.
-	{kind: "PASSWORD", re: cjkNamed(cjkPasswordNames), fold: lowerAll(cjkPasswordNames), back: 64, ahead: 100, ok: notAVariable},
+	{kind: "PASSWORD", re: cjkNamed(cjkPasswordNames), fold: lowerAll(cjkPasswordNames), back: 64, ahead: 100, ok: notAVariable, field: true},
 	// a key, a secret or a token after its name the same way: 密钥为 …,
 	// 令牌是 …, 金鑰： … . A key of digits only is taken after 为, 是, ：
 	// or = when it has six or more and counts nothing, so 密钥为12231241
 	// is masked and 密钥为 2048 位 is left.
-	{kind: "SECRET", re: cjkNamed(cjkKeyNames), fold: lowerAll(cjkKeyNames), back: 64, ahead: 100, at: keyAt},
+	{kind: "SECRET", re: cjkNamed(cjkKeyNames), fold: lowerAll(cjkKeyNames), back: 64, ahead: 100, at: keyAt, field: true},
 	// an English name for one before 为, 為, 是 or ：, as a Chinese message
 	// has it: apikey 为 …, token 是 …, API Key：… (CyberCaius on Discord).
 	// password = … and API_KEY: … in a config are the SECRET rule's above.
 	{kind: "SECRET", re: regexp.MustCompile(`(?i)(?:` + secretNames.pattern() + `|pwd|api[ ]key|access[ ]key|secret[ ]key|key|\bpin(?:[ ]?code)?)` + quote +
 		`[ \t]*(?:[为為是][ \t]*[:：]?|：)[ \t]*(?:\\?["'“「])?(` + secretCh + `{3,}[A-Za-z0-9_\-/+=~!@#%^&*])`),
-		fold: cjkCopulas, back: 24, ahead: 260, at: keyAt},
+		fold: cjkCopulas, back: 24, ahead: 260, at: keyAt, field: true},
 
 	{kind: "EMAIL", re: regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`), markers: []string{"@"}, bound: alnum + "_%+-", ok: realEmail, at: emailAt, cat: catPersonal},
 	{kind: "ID_CARD", re: regexp.MustCompile(`[1-9]\d{5}(?:18|19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx]`), bound: alnum, ok: chineseID, cat: catPersonal},
@@ -328,9 +335,10 @@ func keyValue(v string) bool {
 // time.
 func keyAt(s string, a, b int) bool {
 	v := s[a:b]
-	if pathValue(v) || versionValue(v) {
-		// where a key is kept: 私钥 ~/.ssh/id_ed25519, or a release's
-		// version: token 是 0.15.0-rc1 (fieldvalue.go)
+	if pathValue(v) || versionValue(v) || timestampValue(v) {
+		// where a key is kept: 私钥 ~/.ssh/id_ed25519, a release's
+		// version: token 是 0.15.0-rc1, or a moment: 令牌是
+		// 2026-08-30T11:44:31 (fieldvalue.go)
 		return false
 	}
 	if keyValue(v) {
@@ -572,7 +580,16 @@ func realEmail(v string) bool {
 	if !mailHost(v[:at], host) {
 		return false
 	}
-	if fileHost(host) || docFiles[host] || !mailTLD(host[strings.LastIndexByte(host, '.')+1:]) {
+	if fileHost(host) {
+		// the end of a file's name: an address before its extension
+		// (alice.smith@acme.com.pdf, export-rina.k@fastmail.com.png) is
+		// someone's all the same; a scale or a word (@2x.jpg, @final.pdf)
+		// is no domain
+		if host = fileStem(host); !strings.Contains(host, ".") || fileHost(host) || !mailHost(v[:at], host) {
+			return false
+		}
+	}
+	if docFiles[host] || !mailTLD(host[strings.LastIndexByte(host, '.')+1:]) {
 		return false
 	}
 	for _, fake := range []string{"example.com", "example.org", "example.net", "localhost", ".test", ".invalid", ".example"} {
@@ -669,6 +686,18 @@ func fileHost(host string) bool {
 	dot := strings.LastIndexByte(host, '.')
 	ext := host[dot+1:]
 	return fileExt[ext] || dot > 0 && scaleExt[ext] && scaleRe.MatchString(host[:dot])
+}
+
+// fileStem is host with the file extensions at its end taken off
+// (acme.com.tar.gz is acme.com), for a host fileHost took for a file's.
+func fileStem(host string) string {
+	for {
+		dot := strings.LastIndexByte(host, '.')
+		if dot < 0 || !fileExt[host[dot+1:]] {
+			return host
+		}
+		host = host[:dot]
+	}
 }
 
 func chineseID(v string) bool {
@@ -1449,7 +1478,7 @@ func (r rule) by() string {
 // ahead set, only around its fold markers.
 func (r rule) matches(s, lower string) [][]int {
 	if r.ahead == 0 {
-		return r.re.FindAllStringSubmatchIndex(s, -1)
+		return r.findAll(s)
 	}
 	var wins [][2]int
 	for _, f := range r.fold {
@@ -1488,7 +1517,7 @@ func (r rule) matches(s, lower string) [][]int {
 			k++
 			w[1] = max(w[1], wins[k][1])
 		}
-		for _, m := range r.re.FindAllStringSubmatchIndex(s[w[0]:w[1]], -1) {
+		for _, m := range r.findAll(s[w[0]:w[1]]) {
 			for x := range m {
 				if m[x] >= 0 {
 					m[x] += w[0]
@@ -1500,12 +1529,31 @@ func (r rule) matches(s, lower string) [][]int {
 	return out
 }
 
+// findAll are r's matches in s: each of them, or, for a rule that reads
+// a field's value after its name (field), none whose value is the next
+// field (fieldMatches).
+func (r rule) findAll(s string) [][]int {
+	if r.field {
+		return fieldMatches(r.re, s)
+	}
+	return r.re.FindAllStringSubmatchIndex(s, -1)
+}
+
 // lowerASCII is s with its ASCII letters in lower case, as long as s, so a
-// place in one is the same place in the other.
+// place in one is the same place in the other (a byte of a character
+// outside ASCII is never an ASCII letter). It is s itself, not a copy,
+// where s has no capital.
 func lowerASCII(s string) string {
+	i := 0
+	for i < len(s) && !('A' <= s[i] && s[i] <= 'Z') {
+		i++
+	}
+	if i == len(s) {
+		return s
+	}
 	b := []byte(s)
-	for i, c := range b {
-		if 'A' <= c && c <= 'Z' {
+	for ; i < len(b); i++ {
+		if c := b[i]; 'A' <= c && c <= 'Z' {
 			b[i] = c + 'a' - 'A'
 		}
 	}
@@ -1531,6 +1579,12 @@ func (r rule) takes(s string, a, b int, ok func(string) bool) bool {
 // first and longest where they overlap, nothing inside a placeholder. A
 // value o allows is left as it is, and one of a kind o warns of is left
 // and told. o.Seen, where set, is told of each.
+//
+// The user's Masked words win over Never mask: a value on both lists is
+// masked, and so is a word inside a value Never mask lets go, since of
+// two things the user asked for the one that keeps the value from the
+// vendor is the safe one. Never mask wins over everything else, the
+// user's own rules too: a value it names is the exception to them.
 func apply(s string, found []span, put func(kind, v string) string, o Options) (string, int) {
 	if len(found) == 0 {
 		return s, 0
@@ -1556,15 +1610,17 @@ func apply(s string, found []span, put func(kind, v string) string, o Options) (
 	})
 	var b strings.Builder
 	last, next, n := 0, 0, 0 // next: where the next value may start
+	kept := 0                // the end of a value let go; only a word is masked before it
 	for _, f := range found {
-		if f.start < next {
+		if f.start < next || f.start < kept && f.by != ByWord {
+			continue
+		}
+		v := s[f.start:f.end]
+		if f.by != ByWord && o.allows(v) {
+			kept = max(kept, f.end)
 			continue
 		}
 		next = f.end
-		v := s[f.start:f.end]
-		if o.allows(v) {
-			continue
-		}
 		act := o.Actions[f.kind]
 		if act != Warn && act != Block {
 			act = ""

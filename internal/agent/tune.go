@@ -13,13 +13,16 @@ package agent
 // sets that value, so the Usage page and the agents' settings never show
 // two numbers (7eleven on Discord). Before, tune wrote Codex's
 // model_auto_compact_token_limit beside it; tuneMigrateCodex moves such a
-// value into Long conversations.
+// value into Long conversations. An agent with a Long conversations of
+// its own (settings.AgentCompacts) has tune read and set that one.
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -71,8 +74,18 @@ type tuneLong struct {
 	Set       int  `json:"set"`
 }
 
-func tuneLongStashed() (tuneLong, bool) {
-	raw := stashShared()[tuneLongKey]
+// longKey is where Long conversations as agent reads it is stashed: the
+// one for every agent, or the agent's own (settings.AgentCompacts), which
+// a Use puts the advice in instead.
+func longKey(s settings.Settings, agent string) string {
+	if _, own := s.AgentCompacts[agent]; own {
+		return tuneLongKey + "." + agent
+	}
+	return tuneLongKey
+}
+
+func tuneLongStashed(key string) (tuneLong, bool) {
+	raw := stashShared()[key]
 	var st tuneLong
 	if raw == "" || json.Unmarshal([]byte(raw), &st) != nil {
 		return tuneLong{}, false
@@ -89,36 +102,47 @@ func longValue(s settings.Settings) string {
 	return ""
 }
 
-// longOurs says Long conversations still holds the window tune put in.
-func longOurs(s settings.Settings) bool {
-	st, ok := tuneLongStashed()
-	return ok && !s.FullContext && s.Compact() == st.Set
+// longOurs says Long conversations, as agent reads it, still holds the
+// window tune put in.
+func longOurs(s settings.Settings, agent string) bool {
+	st, ok := tuneLongStashed(longKey(s, agent))
+	a := s.ForAgent(agent)
+	return ok && !a.FullContext && a.Compact() == st.Set
 }
 
 // longApply puts n in Long conversations, what it was kept the first time
 // for Undo. Sync then writes it into every agent magpie routes.
-func longApply(n int) error {
+func longApply(agent string, n int) error {
 	s := settings.Load()
-	st, ok := tuneLongStashed()
+	key, a := longKey(s, agent), s.ForAgent(agent)
+	st, ok := tuneLongStashed(key)
 	if !ok {
-		st = tuneLong{CompactAt: s.CompactAt, Full: s.FullContext}
+		st = tuneLong{CompactAt: a.CompactAt, Full: a.FullContext}
 	}
 	st.Set = n
 	b, _ := json.Marshal(st)
-	stash(map[string]string{tuneLongKey: string(b)})
+	stash(map[string]string{key: string(b)})
+	if key != tuneLongKey {
+		return provider.SetAgentCompact(agent, &settings.AgentCompact{At: n})
+	}
 	return provider.SetCompactAt(n) // Full window off too
 }
 
 // longUndo puts Long conversations back as it was before tune, unless the
 // user changed it since: then it is theirs, and only forgotten.
-func longUndo() error {
-	st, ok := tuneLongStashed()
+func longUndo(agent string) error {
+	s := settings.Load()
+	key := longKey(s, agent)
+	st, ok := tuneLongStashed(key)
 	if !ok {
 		return fmt.Errorf("magpie didn't set Long conversations")
 	}
-	defer forget(tuneLongKey)
-	if !longOurs(settings.Load()) {
+	defer forget(key)
+	if !longOurs(s, agent) {
 		return nil
+	}
+	if key != tuneLongKey {
+		return provider.SetAgentCompact(agent, &settings.AgentCompact{At: st.CompactAt, Full: st.Full})
 	}
 	if st.Full {
 		return provider.SetFullContext(true)
@@ -145,9 +169,9 @@ func tuneMigrateCodex(home string) {
 		return
 	}
 	if n, err := strconv.Atoi(st.Set); err == nil && n > 0 {
-		s := settings.Load()
+		s := settings.Load().ForAgent("codex")
 		if s.CompactAt == 0 || s.FullContext || n < s.Compact() {
-			if err := longApply(n); err != nil {
+			if err := longApply("codex", n); err != nil {
 				return
 			}
 		}
@@ -254,7 +278,7 @@ func TuneRead(home, agent, knob, model string) (TuneSetting, error) {
 			return s, nil
 		}
 		st := settings.Load()
-		return TuneSetting{Value: longValue(st), Source: TuneLong, Ours: longOurs(st)}, nil
+		return TuneSetting{Value: longValue(st.ForAgent(agent)), Source: TuneLong, Ours: longOurs(st, agent)}, nil
 	}
 	var s TuneSetting
 	for _, k := range p.env {
@@ -262,7 +286,7 @@ func TuneRead(home, agent, knob, model string) (TuneSetting, error) {
 			if k == claudeCompactEnv && claudeLongEnv(p.path, v) {
 				// as Long conversations has it now, which Sync is writing
 				st := settings.Load()
-				return TuneSetting{Value: longValue(st), Source: TuneLong, Ours: longOurs(st)}, nil
+				return TuneSetting{Value: longValue(st.ForAgent(agent)), Source: TuneLong, Ours: longOurs(st, agent)}, nil
 			}
 			s.Locked = k
 			s.Value, s.Source = v, "env"
@@ -283,8 +307,7 @@ func TuneRead(home, agent, knob, model string) (TuneSetting, error) {
 			// own: magpie's Long conversations where magpie wrote it
 			if v, ok := edit.GetJSON(p.path, "autoCompactWindow"); ok && v != "auto" {
 				if claudeLongWindow(p.path, "autoCompactWindow", "claude.compact_default") {
-					st := settings.Load()
-					return TuneSetting{Value: v, Source: TuneLong, Ours: longOurs(st)}, nil
+					return TuneSetting{Value: v, Source: TuneLong, Ours: longOurs(settings.Load(), agent)}, nil
 				}
 				s.Value, s.Source = v, "settings"
 			}
@@ -316,7 +339,7 @@ func claudeLongWindow(path, key, stashKey string) bool {
 	if !ok || v == "" || v != stashShared()[stashKey] {
 		return false
 	}
-	return v == longValue(settings.Load())
+	return v == longValue(settings.Load().ForAgent("claude"))
 }
 
 func tuneStashed(agent, knob, model string) (tuneStash, bool) {
@@ -354,7 +377,7 @@ func TuneApply(home, agent, knob, model, value string) error {
 		if agent == "claude" && (n < 100000 || n > 1000000) {
 			return fmt.Errorf("Claude Code takes a window of 100000 to 1000000 tokens, not %d", n)
 		}
-		return longApply(n)
+		return longApply(agent, n)
 	}
 	var v any = value
 	if p.number {
@@ -386,6 +409,80 @@ func TuneApply(home, agent, knob, model, value string) error {
 	return edit.SetJSON(p.path, edit.KV{Path: p.key, Value: v})
 }
 
+// TuneKnob is one setting of an agent's, the model a window is for, and
+// how the agent has it now.
+type TuneKnob struct {
+	Knob    string
+	Model   string
+	Setting TuneSetting
+}
+
+// TuneKept are the settings in agent's own config that tune put in and
+// that still hold its value (Ours), so Undo can put back what was there:
+// Claude Code's cache lifetimes and per-model windows. The Usage page's
+// card keeps them there when a range has too few calls to advise on
+// (linkaww on Discord: a 1-hour cache put in, with no way back to 5
+// minutes). The cache lifetimes are also picked in Claude Code's own
+// settings (ClaudeCacheSet), which makes them the user's. One in magpie's Long
+// conversations or Codex's background compaction is left out: Settings
+// shows and changes those.
+func TuneKept(home, agent string) []TuneKnob {
+	prefix := "tune." + agent + "."
+	var out []TuneKnob
+	for k := range stashShared() {
+		rest, ok := strings.CutPrefix(k, prefix)
+		if !ok {
+			continue
+		}
+		knob, model, _ := strings.Cut(rest, ".")
+		if knob != TuneCompact && knob != TuneCache && knob != TuneSubCache {
+			continue
+		}
+		s, err := TuneRead(home, agent, knob, model)
+		if err != nil || !s.Ours || s.Source == TuneLong {
+			continue
+		}
+		out = append(out, TuneKnob{Knob: knob, Model: model, Setting: s})
+	}
+	// the same order in every read: the cache rows, then the windows by model
+	slices.SortFunc(out, func(a, b TuneKnob) int {
+		window := func(k TuneKnob) int {
+			if k.Knob == TuneCompact {
+				return 1
+			}
+			return 0
+		}
+		return cmp.Or(window(a)-window(b), cmp.Compare(a.Knob, b.Knob), cmp.Compare(a.Model, b.Model))
+	})
+	return out
+}
+
+// TuneCacheHere is Claude Code's two prompt-cache lifetimes as this
+// computer's Claude Code reads them, whoever set them, when its folder is
+// here: the main conversation's always, the subagents' when something
+// sets it. They change what this computer's Claude Code sends, whichever
+// magpie its requests go on to (linkaww on Discord: Claude Code through a
+// Remote magpie, too few calls read here to advise on, and the card had
+// no row to tell the cache it keeps, or a way back to 5 minutes).
+func TuneCacheHere(home string) []TuneKnob {
+	p, err := tuneWhere(home, "claude", TuneCache, "")
+	if err != nil {
+		return nil
+	}
+	if fi, err := os.Stat(filepath.Dir(p.path)); err != nil || !fi.IsDir() {
+		return nil
+	}
+	var out []TuneKnob
+	for _, knob := range []string{TuneCache, TuneSubCache} {
+		s, err := TuneRead(home, "claude", knob, "")
+		if err != nil || knob == TuneSubCache && s.Value == "" {
+			continue
+		}
+		out = append(out, TuneKnob{Knob: knob, Setting: s})
+	}
+	return out
+}
+
 // TuneUndo puts back what a setting was before tune put one in, unless
 // the user has changed it since: then it is theirs, and only forgotten.
 func TuneUndo(home, agent, knob, model string) error {
@@ -397,7 +494,7 @@ func TuneUndo(home, agent, knob, model string) error {
 		return err
 	}
 	if cur, _ := TuneRead(home, agent, knob, model); cur.Source == TuneLong {
-		return longUndo()
+		return longUndo(agent)
 	}
 	st, ok := tuneStashed(agent, knob, model)
 	if !ok {
@@ -539,4 +636,39 @@ func asyncUndo() error {
 		return nil
 	}
 	return provider.SetCodexAsyncCompact(st.On, st.Percent)
+}
+
+// ClaudeCacheSet is one of Claude Code's prompt-cache lifetimes as the
+// user picks it in Claude Code's settings, beside its compaction (Linka on
+// Discord: the card offers no way to change a lifetime that is already
+// the cheapest): "5m" or "1h", written where the card writes it
+// (promptCacheTtl, subagentPromptCacheTtl in settings.json), or "" taking
+// the key out, so Claude Code's own default holds. Claude Code reads the
+// variables before the setting (FORCE_PROMPT_CACHING_5M, then
+// CLAUDE_CODE_PROMPT_CACHE_TTL or CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL),
+// so with one set nothing is written. The pick is the user's own: a value
+// the card stashed is forgotten, so its Undo never puts an older one back
+// over it.
+func ClaudeCacheSet(home, knob, value string) error {
+	if knob != TuneCache && knob != TuneSubCache {
+		return fmt.Errorf("Claude Code has no prompt cache %q", knob)
+	}
+	if value != "" && value != "5m" && value != "1h" {
+		return fmt.Errorf("the cache is kept 5m or 1h, not %q", value)
+	}
+	p, err := tuneWhere(home, "claude", knob, "")
+	if err != nil {
+		return err
+	}
+	if cur, _ := TuneRead(home, "claude", knob, ""); cur.Locked != "" {
+		return fmt.Errorf("%s=%s is set and comes before the setting: take it out first", cur.Locked, cur.Value)
+	}
+	forget(tuneKey("claude", knob, ""))
+	if value == "" {
+		if _, ok := p.get(); !ok {
+			return nil
+		}
+		return edit.DelJSON(p.path, p.key)
+	}
+	return edit.SetJSON(p.path, edit.KV{Path: p.key, Value: value})
 }

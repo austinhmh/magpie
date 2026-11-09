@@ -30,7 +30,10 @@
 <link rel="alternate" hreflang="en" href="https://usemagpie.ai/docs/privacy">
 <link rel="alternate" hreflang="zh" href="https://usemagpie.ai/docs/zh/privacy">
 <link rel="alternate" hreflang="ja" href="https://usemagpie.ai/docs/ja/privacy">
+<link rel="alternate" hreflang="x-default" href="https://usemagpie.ai/docs/privacy">
+<link rel="canonical" href="https://usemagpie.ai/docs/zh/privacy">
 <link rel="stylesheet" href="/docs.css">
+<meta property="og:site_name" content="magpie">
 <meta property="og:title" content="隐私">
 <meta property="og:description" content="magpie 自己发出的所有内容，以及怎么关掉。">
 <meta property="og:image" content="https://usemagpie.ai/img/og.png">
@@ -51,6 +54,14 @@
     <a class="toc-only" href="/docs/zh/privacy">隐私</a>
     <a class="toc-only" href="/docs/zh/masking">本地脱敏</a>
     <a class="toc-only" href="/docs/zh/mcp-router">MCP 路由</a>
+    <a class="toc-only" href="/docs/zh/library">资源库</a>
+    <a class="toc-only" href="/docs/zh/claude-code-models">Claude Code 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/codex-models">Codex 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/gemini-cli-models">Gemini CLI 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/subscriptions">订阅用于任意 Agent</a>
+    <a class="toc-only" href="/docs/zh/local-models">本地模型</a>
+    <a class="toc-only" href="/docs/zh/opencode-models">OpenCode 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/alternatives">与 CC Switch、CCR 对比</a>
     <a href="/docs/zh/import">Add to magpie</a>
     <a href="/docs/zh/integrate">接入应用</a>
     <a href="https://github.com/yetone/magpie-releases/releases">版本发布</a>
@@ -174,6 +185,7 @@
     <p>magpie 会向自己的网站请求几样东西，不受隐私设置影响，就像任何应用访问自己的更新服务器。这些请求都不带安装 ID 或账号。</p>
     <ul>
       <li><code>/api/latest</code>：更新信息，每 6 小时一次（开了 <code>noAutoUpdate</code> 则不请求），带 <code>?lang=</code> 取对应语言的说明；<span class="ui">设置</span> → <span class="ui">关于</span> → <span class="ui">更新渠道</span>选了稳定版时还带 <code>?channel=stable</code>。两者都不含你是谁。<code>/api/notes</code> 在更新后给出“新功能”。</li>
+      <li><code>/files/&lt;版本&gt;/&lt;文件&gt;</code>：更新和安装脚本下载的发布文件，由 Cloudflare R2 提供；站点上没有的文件会转到 github.com。不做任何统计。</li>
       <li><code>/api/partners</code>：添加供应商页的合作伙伴列表，每 6 小时一次。在有合作伙伴上架时，每十次拉取记一次 <code>magpie partners fetch</code> 事件，附 Cloudflare 给出的国家。</li>
       <li><code>/go/&lt;合作伙伴&gt;/site</code> 和 <code>/go/&lt;合作伙伴&gt;/keys</code>：在浏览器里打开合作伙伴的官网和 Key 页面链接时，先记一次 <code>magpie partner go</code>（哪个合作伙伴、哪个链接、地区、国家），再跳转。</li>
       <li><code>/api/icon?url=…</code>：插件、导入链接和库里的图标经它获取，图标所在的服务器只看到 Cloudflare 的地址，看不到你的。它只转发图片，不计数也不记录。</li>
@@ -184,7 +196,7 @@
     <p>为了给模型定价和命名，magpie 会拉取 <a href="https://models.dev">models.dev</a> 的模型目录（<code>models.dev/api.json</code>）；为了用你的货币显示价格，会从 <code>open.er-api.com</code> 拉取美元汇率（缓存 12 小时）。插件及其更新来自 npm 仓库，库里的内容来自 GitHub。这些都是公开数据的普通下载，不发送任何关于你、你的供应商或用量的信息；和任何请求一样，这些主机能看到你的 IP（或代理的 IP）。magpie 还会用你自己的密钥或登录向各个供应商读取额度和模型列表；<span class="ui">设置</span> → <span class="ui">额度</span> → <span class="ui">额度刷新</span> → <span class="ui">仅手动</span> 可以只在你要求时才读。</p>
 
     <h2 id="otel"><a class="anchor" href="#otel">OTLP 导出</a></h2>
-    <p>magpie 可以把每个网关请求导出到你自己的 OpenTelemetry 收集器（比如 Langfuse）。它<b>默认关闭</b>，只发到你设置的地址，从不发给我们。开启后发送每个请求的 span：agent、供应商、模型、token 数、状态、耗时和估算费用。另有开关可以加上指标、本地 agent 对话，以及请求和回复正文（密钥已遮盖）。在 <span class="ui">设置</span> → <span class="ui">可观测性</span> 里开启，<code>magpie serve</code> 也可以用 <code>MAGPIE_OTEL_ENABLED</code>、<code>MAGPIE_OTEL_ENDPOINT</code>、<code>MAGPIE_OTEL_HEADERS</code>、<code>MAGPIE_OTEL_METRICS</code>、<code>MAGPIE_OTEL_SESSIONS</code>、<code>MAGPIE_OTEL_BODIES</code> 和 <code>MAGPIE_OTEL_BODIES_WHOLE</code>。只设地址不会开启导出。用 Langfuse 的话，在那里选 <span class="ui">Langfuse</span>，填上地址和项目的两个密钥，magpie 会据此生成地址和认证头。细节见<a href="https://github.com/yetone/magpie/blob/main/docs/reference.md#otlp-export">参考文档</a>。</p>
+    <p>magpie 可以把每个网关请求导出到你自己的 OpenTelemetry 收集器（比如 Langfuse）。它<b>默认关闭</b>，只发到你设置的地址，从不发给我们。开启后发送每个请求的 span：agent、供应商、模型、token 数、状态、耗时和估算费用。另有开关可以加上指标、本地 agent 对话，以及请求和回复正文（密钥已遮盖）。在 <span class="ui">设置</span> → <span class="ui">可观测性</span> 里开启，<code>magpie serve</code> 也可以用 <code>MAGPIE_OTEL_ENABLED</code>、<code>MAGPIE_OTEL_ENDPOINT</code>、<code>MAGPIE_OTEL_HEADERS</code>、<code>MAGPIE_OTEL_METRICS</code>、<code>MAGPIE_OTEL_SESSIONS</code>、<code>MAGPIE_OTEL_BODIES</code> 和 <code>MAGPIE_OTEL_BODIES_WHOLE</code>。只设地址不会开启导出。用 Langfuse 的话，在那里选 <span class="ui">Langfuse</span>，填上地址和项目的两个密钥，magpie 会据此生成地址和认证头。每次导出的 resource 是 <code>service.name=magpie</code>，再加上你自己在 <code>OTEL_RESOURCE_ATTRIBUTES</code> 和 <code>OTEL_SERVICE_NAME</code> 里设置的值（比如服务器名），不会读取你机器上的任何信息。细节见<a href="https://github.com/yetone/magpie/blob/main/docs/reference.md#otlp-export">参考文档</a>。</p>
 
     <h2 id="masking"><a class="anchor" href="#masking">发给供应商的内容脱敏</a></h2>
     <p>上面几节讲的是 magpie 自己发出的东西。你的 Agent 发出的内容会去往你选的供应商，<b>隐私脱敏</b>让其中的密钥留在这台电脑上。它<b>默认关闭</b>，在 <span class="ui">设置</span> → <span class="ui">隐私</span> 里打开。</p>
@@ -219,6 +231,14 @@
     <a href="/docs/zh/privacy">隐私</a>
     <a href="/docs/zh/masking">本地脱敏</a>
     <a href="/docs/zh/mcp-router">MCP 路由</a>
+    <a href="/docs/zh/library">资源库</a>
+    <a href="/docs/zh/claude-code-models">Claude Code 接入其他模型</a>
+    <a href="/docs/zh/codex-models">Codex 接入其他模型</a>
+    <a href="/docs/zh/gemini-cli-models">Gemini CLI 接入其他模型</a>
+    <a href="/docs/zh/subscriptions">订阅用于任意 Agent</a>
+    <a href="/docs/zh/local-models">本地模型</a>
+    <a href="/docs/zh/opencode-models">OpenCode 接入其他模型</a>
+    <a href="/docs/zh/alternatives">与 CC Switch、CCR 对比</a>
     <a href="/docs/zh/import">Add to magpie</a>
     <a href="/docs/zh/integrate">接入应用</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

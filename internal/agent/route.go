@@ -90,7 +90,7 @@ func sameList(a, b []Option) bool {
 func sameOption(a, b Option) bool {
 	return a.Value == b.Value && a.Label == b.Label && a.Note == b.Note && a.Icon == b.Icon &&
 		slices.Equal(a.Icons, b.Icons) && a.Group == b.Group && a.GroupIcon == b.GroupIcon &&
-		a.Ref == b.Ref && a.Free == b.Free && a.Rate == b.Rate && a.RateWas == b.RateWas &&
+		a.Ref == b.Ref && a.Free == b.Free && a.Zero == b.Zero && a.Rate == b.Rate && a.RateWas == b.RateWas &&
 		a.Context == b.Context && a.Takes == b.Takes && a.Direct == b.Direct && a.Via == b.Via &&
 		a.Same == b.Same && a.Served == b.Served && a.Alias == b.Alias && a.FastFor == b.FastFor &&
 		a.Fast == b.Fast && a.OwnFast == b.OwnFast && a.UltraOK == b.UltraOK && a.Ultra == b.Ultra &&
@@ -148,6 +148,7 @@ func buildVia(agent, prefix string) []Option {
 		return u
 	}
 	fast, ultra := provider.FastPicks(agent), provider.UltraPicks(agent)
+	set := settings.Shared()   // the prices the user set, read once for the list
 	var tiered map[string]bool // provider.UltraModels, read at the first fast model
 	for _, e := range shown {
 		if e.Group != "" {
@@ -162,6 +163,9 @@ func buildVia(agent, prefix string) []Option {
 		o := Option{Value: prefix + e.ID, Label: e.Name, Note: note,
 			Icon: e.Provider.Icon, Group: e.Provider.Name, Ref: e.ID, Free: e.Free, Rate: e.Rate, RateWas: e.RateWas, Context: e.Context, own: own[e.Provider.ID],
 			sub: e.Provider.Account != nil && (e.Provider.Account.Agent != "claude" || agent == "claude")}
+		if !e.Free {
+			o.Zero = e.Provider.PricedFree(set, e.Model)
+		}
 		// a model with a fast mode is switched fast in the picker (#954)
 		if provider.CanFast(e.Provider, e.Model) {
 			o.FastFor, o.Fast = agent, slices.Contains(fast, e.ID)
@@ -336,8 +340,9 @@ func buildModels(agent string) []catalog.Model {
 	shown, _ := provider.CatalogFor(agent)
 	labels := provider.Labels(shown)
 	// a model magpie describes images to takes them (provider.Described)
-	seen := provider.Described != nil && provider.Described()
-	st, find := settings.Load(), provider.GroupFinder()
+	seen := describedNow()
+	// the agent's own Long conversations, if it has one (ForAgent)
+	st, find := settings.Load().ForAgent(agent), provider.FoundOnce(provider.GroupFinder())
 	priceOf := provider.AgentPricer(st, find)
 	members := func(id string) []provider.Member {
 		_, ms, _ := find(id)
@@ -366,8 +371,9 @@ func buildModels(agent string) []catalog.Model {
 			m.ImageInput = &yes
 		}
 		// APIs is the preferred client protocol, preserving the vendor's
-		// own content where possible. A group's members may differ, so a group has
-		// one only when every member is served best on Responses (#1594,
+		// own content where possible. A group's members may differ, so a
+		// group has Responses when one member is best there and every
+		// other takes it as it is too (provider.GroupAPI; #1594,
 		// ObsidianArch02): Pi, omp, droid and dsh then ask it there, and a
 		// GPT group's tool-call arguments stream as the member sends them
 		// instead of being held for a Chat answer
@@ -385,8 +391,8 @@ func buildModels(agent string) []catalog.Model {
 					}
 				}
 			}
-		} else if allResponses(members(e.ID)) {
-			m.APIs = []string{string(provider.Responses)}
+		} else if api := provider.GroupAPI(members(e.ID)); api != "" {
+			m.APIs = []string{string(api)}
 		}
 		// the service tiers Codex is offered on it, as the gateway's own
 		// lists offer them: Fast in the Codex CLI magpie writes
@@ -400,6 +406,13 @@ func buildModels(agent string) []catalog.Model {
 		// the gateway paths it goes on untranslated, as /v1/models says
 		// them: what an agent plugin's connect is told (cleary5779)
 		m.Endpoints = provider.NativeEndpoints(e)
+		if e.Group != "" {
+			// a group's, the APIs every member relays as it is
+			// (provider.GroupEndpoints), which /v1/models leaves out: a
+			// remote magpie sends a group's request on in the client's
+			// API, for the other side to pick per member
+			m.Endpoints = provider.GroupEndpoints(members(e.ID))
+		}
 		// Codex's /fast on a ChatGPT account's own GPT model, which
 		// OpenCode has no command for and takes as variants (#2379); a
 		// group is sent fast as the group says, as a fast pick is
@@ -413,19 +426,18 @@ func buildModels(agent string) []catalog.Model {
 	return out
 }
 
-// allResponses reports whether a group's members are all served best on
-// Responses, so the gateway relays a Responses request to whichever it
-// picks. A group with none, or one member on another API, is false: a
-// Messages-only group stays on Chat too, as the thinking a Claude member
-// takes is known by its own model, not by the group's id.
-func allResponses(ms []provider.Member) bool {
-	for _, m := range ms {
-		if m.Provider.Native(m.Model) != provider.Responses {
-			return false
-		}
-	}
-	return len(ms) > 0
+// describedNow is provider.Described, asked once for every agent's list
+// while provider.StampNow stays the same, magpieModelsFor at most, as the
+// lists are kept: each list built asked the gateway's Vision pick again,
+// which ranks every provider's models that see, 553 MB of what a live
+// magpie allocated in 37 minutes for the same answer a dozen times over.
+func describedNow() bool {
+	return builtSeen.shared("", func() []bool {
+		return []bool{provider.Described != nil && provider.Described()}
+	})[0]
 }
+
+var builtSeen stampedLists[bool]
 
 // maxTokens is the output limit an agent is handed for m, kept within the
 // context window it is handed with it: models.dev lists some models' output

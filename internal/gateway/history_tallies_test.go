@@ -91,3 +91,56 @@ func TestDayTalliesFoldOnlyWhatWasAdded(t *testing.T) {
 		t.Errorf("another folder's day: %v", got)
 	}
 }
+
+// The Routing page asks to sign an account in again while its latest
+// refusal for its sign-in is newer than its latest answer (adorable_piglet
+// on Discord: "2 需要重新登录" and nowhere to sign in): the day's tally
+// says when that refusal was, beside when it last answered.
+func TestDayTalliesSayWhenSignInWasRefused(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	now := historyNoon(t)
+	route := func(i int, status int, fail string) Route {
+		w := Weighed{ID: "codex@b", Provider: "codex", Name: "Codex", Kind: "account", Who: "b@example.com", Agent: "codex", Model: "gpt-5"}
+		tr := Try{ID: w.ID, Start: now.Add(time.Duration(i) * time.Minute), Done: true, Millis: 100, Status: status, Fail: fail}
+		return Route{ID: int64(i + 1), Time: tr.Start, Done: true, Model: "gpt-5", Provider: "codex", Order: []Weighed{w}, Tries: []Try{tr}}
+	}
+	saveRoute(route(0, 200, ""))
+	saveRoute(route(1, 401, failAuth))
+	saveRoute(route(2, 502, "other"))
+	a := DayTallies()[`["codex","b@example.com"]`]
+	refused := now.Add(time.Minute).UnixMilli() + 100
+	if a.AuthAt != refused || a.Fails[failAuth] != 1 {
+		t.Fatalf("refused at %d (%d of them), want %d", a.AuthAt, a.Fails[failAuth], refused)
+	}
+	if a.Last >= a.AuthAt {
+		t.Fatalf("answered at %d, after the refusal at %d", a.Last, a.AuthAt)
+	}
+	// it answers again: the refusal is older than that answer, and stays
+	// when it was
+	saveRoute(route(3, 200, ""))
+	a = DayTallies()[`["codex","b@example.com"]`]
+	if a.AuthAt != refused || a.Last <= a.AuthAt {
+		t.Errorf("after an answer: refused at %d, answered at %d", a.AuthAt, a.Last)
+	}
+}
+
+// A refusal the vendor called a rate limit until a time it named is
+// counted as one in the day's tally (taoxiaoxin on Discord: WorkBuddy's
+// "您的使用量已超出频率限制，将在 … (UTC+8) 重置" was tallied "额度用尽"); a
+// quota used up stays one.
+func TestDayTalliesCountARateLimitAsOne(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	now := historyNoon(t)
+	route := func(i int, rest *Rest) Route {
+		w := Weighed{ID: "workbuddy@b", Provider: "workbuddy", Name: "WorkBuddy", Kind: "account", Who: "b@example.com", Model: "deepseek-v4.1-flash"}
+		tr := Try{ID: w.ID, Start: now.Add(time.Duration(i) * time.Minute), Done: true, Millis: 100, Status: 429, Fail: failQuota, Rest: rest}
+		return Route{ID: int64(i + 1), Time: tr.Start, Done: true, Model: w.Model, Provider: "workbuddy", Order: []Weighed{w}, Tries: []Try{tr}}
+	}
+	saveRoute(route(0, &Rest{Why: failQuota, By: "resets", Rate: true, Model: "deepseek-v4.1-flash"}))
+	saveRoute(route(1, &Rest{Why: failQuota, By: "resets", Model: "deepseek-v4.1-flash"}))
+	saveRoute(route(2, nil))
+	a := DayTallies()[`["workbuddy","b@example.com"]`]
+	if a.Fails[failRate] != 1 || a.Fails[failQuota] != 2 {
+		t.Errorf("tallied %v, want 1 rate and 2 quota", a.Fails)
+	}
+}

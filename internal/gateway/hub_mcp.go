@@ -117,7 +117,139 @@ type Hub interface {
 
 // HubServer is a server behind the hub as an agent is told of it: About
 // is what it is for, "" when magpie doesn't know.
-type HubServer struct{ Name, About string }
+type HubServer struct {
+	Name, About string
+	// Title is the name the server gives itself (initialize's
+	// serverInfo.title), "" when it gives none: another magpie's router
+	// says "Magpie MCP hub · <its name>"
+	Title string
+	// Tools are its tools as it last listed them, each with what its
+	// description says first; Known is whether magpie has listed them for
+	// the server as it is now
+	Tools []HubToolNote
+	Known bool
+	// Bridge: the server is another magpie's router, which the library
+	// gave a server of its own for being a Remote magpie
+	// (library/bridge_mcp.go). A request from another magpie's router
+	// (RouterHeader) isn't given it, so two magpies that have each other
+	// never ask each other round.
+	Bridge bool
+	// HereOnly: the server acts as the user of this computer beyond what
+	// its tools' arguments say: Magpie Browser (every site the user's
+	// browser is signed in to), magpie's image server (it draws with this
+	// magpie's own token, past a gateway key's models, accounts and
+	// spend), and another magpie's router (which passes a call on to its
+	// own). It is given only to a caller on this computer (HubVisitor),
+	// Magpie Browser also to a keyed one elsewhere (Keyed).
+	HereOnly bool
+	// Program: the server is a program run on this computer, with the
+	// user's rights (a command, or a tools plugin), not an HTTP server
+	// elsewhere. A gateway key held to some models, accounts or a spend
+	// limit isn't given it from another computer.
+	Program bool
+	// Keyed: the server is Magpie Browser, whose browsers are each this
+	// computer's or a gateway key's (browser.go): given to this computer
+	// and to another computer's caller with a key, and calls go to that
+	// key's browsers only.
+	Keyed bool
+}
+
+// HubVisitor is who a hub request is from, for what it is given of the
+// servers behind it (HubServer's HereOnly and Program): Away, another
+// computer, a tunnel or a web page; Held, by a gateway key held to some
+// models, accounts or a spend limit. A caller on this computer is given
+// every server. Key is the gateway key an Away visitor came with, whose
+// browsers it is given (HubServer's Keyed).
+type HubVisitor struct {
+	Away, Held bool
+	Key        string
+}
+
+// Gives is whether v is given s.
+func (v HubVisitor) Gives(s HubServer) bool {
+	if !v.Away {
+		return true
+	}
+	if s.Keyed {
+		return v.Key != ""
+	}
+	return !s.HereOnly && !(v.Held && s.Program)
+}
+
+type hubVisitorKey struct{}
+
+// WithHubVisitor is ctx a hub request of v.
+func WithHubVisitor(ctx context.Context, v HubVisitor) context.Context {
+	return context.WithValue(ctx, hubVisitorKey{}, v)
+}
+
+// HubVisitorOf is who ctx's hub request is from; a ctx with none (the
+// gateway's own calls) is this computer's.
+func HubVisitorOf(ctx context.Context) HubVisitor {
+	v, _ := ctx.Value(hubVisitorKey{}).(HubVisitor)
+	return v
+}
+
+// hubVisitor is who r is from (HubVisitor).
+func hubVisitor(r *http.Request) HubVisitor {
+	away := !local(r) || fromBrowser(r)
+	v := HubVisitor{Away: away, Held: away && nativeHeld(access.Caller(r.Context()))}
+	if !local(r) && !fromBrowser(r) {
+		v.Key = access.Caller(r.Context()).KeyID
+	}
+	return v
+}
+
+// RouterHeader marks a request of magpie's own router to another magpie's
+// (FromRouter).
+const RouterHeader = "X-Magpie-Router"
+
+type fromRouterKey struct{}
+
+// WithRouter is ctx a request of another magpie's router.
+func WithRouter(ctx context.Context) context.Context {
+	return context.WithValue(ctx, fromRouterKey{}, true)
+}
+
+// FromRouter is whether ctx is a request of another magpie's router: the
+// servers behind this one that are a Remote magpie's router (HubServer's
+// Bridge) aren't listed or run for it.
+func FromRouter(ctx context.Context) bool {
+	on, _ := ctx.Value(fromRouterKey{}).(bool)
+	return on
+}
+
+// hubServersOf are the servers behind agent's tools, as the request of
+// ctx is given them.
+func hubServersOf(ctx context.Context, agent string) []HubServer {
+	// a copy: the hub's own list isn't cut
+	ss := slices.Clone(MCPHub.Servers(agent))
+	if FromRouter(ctx) {
+		ss = slices.DeleteFunc(ss, func(s HubServer) bool { return s.Bridge })
+	}
+	v, who := HubVisitorOf(ctx), access.Caller(ctx)
+	ss = slices.DeleteFunc(ss, func(s HubServer) bool {
+		ok, _ := who.MCPServer(s.Name)
+		return !v.Gives(s) || !ok
+	})
+	// a key held to some tools of a server is told of those only
+	for i, sv := range ss {
+		if _, every := who.MCPServer(sv.Name); !every {
+			ss[i].Tools = slices.DeleteFunc(slices.Clone(sv.Tools), func(n HubToolNote) bool { return !who.MCPAllows(sv.Name, n.Name) })
+		}
+	}
+	return ss
+}
+
+// hubServes is whether the hub gives another magpie's router a server.
+func hubServes() bool {
+	return MCPHub != nil && MCPHub.On() && slices.ContainsFunc(MCPHub.Servers(""), func(s HubServer) bool { return !s.Bridge })
+}
+
+// HubToolNote is one tool of a server behind the hub, as the instructions
+// name it: its name on that server, and the first clause of its
+// description.
+type HubToolNote struct{ Name, About string }
 
 // MCPHub is set by the library; nil, the hub has no server.
 var MCPHub Hub
@@ -137,6 +269,10 @@ const errHubOff = "magpie's MCP hub is off, so it runs no server's tools: turn i
 
 func (s *Server) hubMCP(w http.ResponseWriter, r *http.Request) {
 	agent := r.PathValue("agent")
+	if r.Header.Get(RouterHeader) != "" {
+		r = r.WithContext(WithRouter(r.Context()))
+	}
+	r = r.WithContext(WithHubVisitor(r.Context(), hubVisitor(r)))
 	serveMCP(w, r, "magpie's MCP hub", "magpie", hubBody, func(r *http.Request, m mcpMessage) (any, map[string]any) {
 		return s.hubMCPCall(r, agent, m)
 	})
@@ -173,9 +309,20 @@ func hubTools(ctx context.Context, agent string) []hubTool {
 	if MCPHub == nil || !MCPHub.On() {
 		return nil
 	}
+	// a server the caller isn't given (HubVisitor) is neither listed nor,
+	// as calls are found in this list (hubToolNamed), run
+	v, kept := HubVisitorOf(ctx), map[string]bool{}
+	for _, s := range MCPHub.Servers(agent) {
+		if !v.Gives(s) {
+			kept[s.Name] = true
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, hubListWait)
 	defer cancel()
-	return hubNamed(MCPHub.Tools(ctx, agent))
+	// nor is one the calling gateway key may not use (access.Key.MCP)
+	who := access.Caller(ctx)
+	ts := slices.DeleteFunc(slices.Clone(MCPHub.Tools(ctx, agent)), func(t HubTool) bool { return kept[t.Server] || !who.MCPAllows(t.Server, t.Tool) })
+	return hubNamed(ts)
 }
 
 // hubLineMax is how much of the instructions' first line an agent is sure
@@ -186,20 +333,141 @@ func hubTools(ctx context.Context, agent string) []hubTool {
 // cloned it instead of asking DeepWiki, 11-01).
 const hubLineMax = 250
 
-// hubAbout is what the instructions say first: HubLine, then a line for
-// each server with all it is for. It is "" when there is no server.
-func hubAbout(ss []HubServer) string {
+// hubSayMax is how long the instructions are at most, in characters: half
+// the 4096 Claude Code keeps of a server's instructions, so a model given
+// several routers reads a few lines of each. The lines that describe each
+// server take what the rest leaves.
+const hubSayMax = 2000
+
+// hubAbout is the instructions: HubLine, then here (what the router says
+// of where it is, when it has a name), then a line for each server with
+// what it is for and its tools (hubDetails), then tail, within hubSayMax.
+// With no server it is tail, then here.
+func hubAbout(ss []HubServer, here, tail string) string {
 	if len(ss) == 0 {
-		return ""
+		if here != "" {
+			return tail + " " + here
+		}
+		return tail
 	}
 	out := HubLine(ss) + "\n"
-	for _, s := range ss {
-		if a := strings.Join(strings.Fields(s.About), " "); a != "" {
-			out += "- " + s.Name + ": " + a + "\n"
+	if here != "" {
+		out += here + "\n"
+	}
+	return out + hubDetails(ss, hubSayMax-runeLen(out)-runeLen(tail)) + tail
+}
+
+// hubDetails is a line for each server that magpie knows anything of,
+// within max characters in all: its name, its own title, what it is for,
+// and its tools, each with the first clause of its description. A line
+// too long for its share says its tools by name only, then as many of
+// them as fit; the room a short line leaves goes to the others.
+func hubDetails(ss []HubServer, max int) string {
+	order := make([]int, 0, len(ss))
+	full := make([]string, len(ss))
+	for i, s := range ss {
+		if full[i] = hubServerLine(s, 1<<20); full[i] != "" {
+			order = append(order, i)
 		}
 	}
-	return out
+	slices.SortStableFunc(order, func(a, b int) int { return runeLen(full[a]) - runeLen(full[b]) })
+	lines := make([]string, len(ss))
+	left := max
+	for j, i := range order {
+		share := left/(len(order)-j) - len("\n")
+		if l := hubServerLine(ss[i], share); l != "" {
+			lines[i] = l
+			left -= runeLen(l) + len("\n")
+		}
+	}
+	var out strings.Builder
+	for _, l := range lines {
+		if l != "" {
+			out.WriteString(l + "\n")
+		}
+	}
+	return out.String()
 }
+
+// hubServerLine is s's line in at most room characters: "- name (title):
+// what it is for. Tools: a (what a does), b.", "" when magpie knows
+// nothing of it or not even its name fits.
+func hubServerLine(s HubServer, room int) string {
+	head := "- " + s.Name
+	if t := oneLine(s.Title); t != "" && !strings.EqualFold(t, s.Name) {
+		head += " (" + t + ")"
+	}
+	about := strings.TrimSuffix(oneLine(s.About), ".")
+	if about == "" && len(s.Tools) == 0 {
+		return ""
+	}
+	if runeLen(head)+len(": .") > room {
+		return ""
+	}
+	say := func(about string, tools []string, more int) string {
+		var parts []string
+		if about != "" {
+			parts = append(parts, about)
+		}
+		switch {
+		case len(tools) == 0 && more > 0:
+			parts = append(parts, strconv.Itoa(more)+" tools")
+		case more > 0:
+			parts = append(parts, "Tools: "+strings.Join(tools, ", ")+", and "+strconv.Itoa(more)+" more")
+		case len(tools) > 0:
+			parts = append(parts, "Tools: "+strings.Join(tools, ", "))
+		}
+		return head + ": " + strings.Join(parts, ". ") + "."
+	}
+	names := make([]string, len(s.Tools))
+	described := make([]string, len(s.Tools))
+	for i, t := range s.Tools {
+		names[i] = t.Name
+		described[i] = t.Name
+		if a := hubToolClause(t.About); a != "" {
+			described[i] += " (" + a + ")"
+		}
+	}
+	for _, tools := range [][]string{described, names} {
+		if l := say(about, tools, 0); runeLen(l) <= room {
+			return l
+		}
+	}
+	// too long: what it is for in half the room at most, then as many
+	// names as fit, the rest counted
+	if about != "" {
+		if n := room/2 - runeLen(head) - len(": ."); n < 12 {
+			about = ""
+		} else {
+			about = strings.TrimSuffix(hubCut(about, n), "…")
+		}
+	}
+	for kept := len(names); kept >= 0; kept-- {
+		if l := say(about, names[:kept], len(names)-kept); runeLen(l) <= room {
+			return l
+		}
+	}
+	if about != "" {
+		return hubCut(say(about, nil, 0), room)
+	}
+	return ""
+}
+
+// hubToolClause is what a tool's description says first, in a few words:
+// a router's own "[name] " before it left out, since the line names the
+// server already.
+func hubToolClause(d string) string {
+	d = oneLine(d)
+	if strings.HasPrefix(d, "[") {
+		if i := strings.Index(d, "] "); i > 0 {
+			d = d[i+2:]
+		}
+	}
+	return hubCut(hubClause(d), 80)
+}
+
+// oneLine is s with every run of spaces and line breaks one space.
+func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // HubLine is one line naming the servers behind the hub, each with what
 // it is for cut to fit hubLineMax: "" when there is none.
@@ -211,7 +479,9 @@ func HubLine(ss []HubServer) string {
 	const room = hubLineMax - len(".")
 	short := make([]string, len(ss))
 	for i, s := range ss {
-		short[i] = hubClause(s.About)
+		// another magpie's router says "Tools of a (…), b.": the line
+		// says "Tools of" once
+		short[i] = hubClause(strings.TrimPrefix(oneLine(s.About), head))
 	}
 	line := func(abouts []string, kept int) string {
 		parts := make([]string, 0, kept+1)
@@ -256,14 +526,20 @@ func HubLine(ss []HubServer) string {
 }
 
 // hubClause is the first part of a description: up to its first comma,
-// colon, semicolon or full stop, on one line.
+// colon, semicolon or full stop outside brackets, on one line, so another
+// magpie's "Tools of a (what a is for, …), b." isn't cut inside a's.
 func hubClause(s string) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if i := strings.IndexAny(s, ",:;"); i > 0 {
-		s = s[:i]
-	}
-	if i := strings.Index(s, ". "); i > 0 {
-		s = s[:i]
+	s = oneLine(s)
+	depth := 0
+	for i, c := range s {
+		switch {
+		case c == '(' || c == '[':
+			depth++
+		case (c == ')' || c == ']') && depth > 0:
+			depth--
+		case depth == 0 && i > 0 && (c == ',' || c == ':' || c == ';' || c == '.' && strings.HasPrefix(s[i:], ". ")):
+			return strings.TrimSuffix(s[:i], ".")
+		}
 	}
 	return strings.TrimSuffix(s, ".")
 }
@@ -283,6 +559,26 @@ func hubCut(s string, n int) string {
 
 func runeLen(s string) int { return len([]rune(s)) }
 
+// hubDescribeWait is how long initialize waits for the tools of servers
+// magpie hasn't listed yet (one just added, edited or signed in to), to
+// name them in its instructions: the agent's tools/list, which comes next,
+// waits for the same servers anyway. One not listed by then is named
+// without its tools, and with them to the next agent that connects.
+var hubDescribeWait = 5 * time.Second
+
+// hubServersFor are the servers behind agent's tools, as the instructions
+// describe them, their tools listed first when magpie hasn't yet.
+func hubServersFor(ctx context.Context, agent string) []HubServer {
+	ss := hubServersOf(ctx, agent)
+	if !MCPHub.On() || !slices.ContainsFunc(ss, func(s HubServer) bool { return !s.Known }) {
+		return ss
+	}
+	wait, cancel := context.WithTimeout(ctx, hubDescribeWait)
+	defer cancel()
+	MCPHub.Tools(wait, agent)
+	return hubServersOf(ctx, agent)
+}
+
 func (s *Server) hubMCPCall(r *http.Request, agent string, m mcpMessage) (any, map[string]any) {
 	switch m.Method {
 	case "initialize":
@@ -290,14 +586,19 @@ func (s *Server) hubMCPCall(r *http.Request, agent string, m mcpMessage) (any, m
 		if agent == "" {
 			say = "The tools of every MCP server in magpie's Library, each named <server>__<tool>. Add servers in magpie's Library → MCP."
 		}
-		if MCPHub != nil {
-			say = hubAbout(MCPHub.Servers(agent)) + say
-		}
-		title := "Magpie MCP hub"
+		title, here := "Magpie MCP hub", ""
 		if w := hubWhere(r); w != "" {
-			say += " This router: " + w + ". Each of its tools' descriptions starts with [" + w + "]; when another MCP server gives the same tools, choose between them by this."
+			here = "This router: " + w + ". Each of its tools' descriptions starts with [" + w + "]; when another MCP server gives the same tools, choose between them by this."
 			title += " · " + w
 		}
+		var ss []HubServer
+		if MCPHub != nil {
+			ss = hubServersFor(r.Context(), agent)
+		}
+		if hubOnDemand(agent, hubToolCount(ss)) {
+			say += hubOnDemandSay
+		}
+		say = hubAbout(ss, here, say)
 		if MCPHub == nil || !MCPHub.On() {
 			say = errHubOff
 		}
@@ -312,25 +613,13 @@ func (s *Server) hubMCPCall(r *http.Request, agent string, m mcpMessage) (any, m
 	case "tools/list":
 		ts := hubTools(r.Context(), agent)
 		where := hubWhere(r)
+		if hubOnDemand(agent, len(ts)) {
+			// hubTools ran, so each server's tools are as just listed
+			return map[string]any{"tools": hubOnDemandSpecs(where, hubServersOf(r.Context(), agent))}, nil
+		}
 		list := make([]any, 0, len(ts))
 		for _, t := range ts {
-			spec := make(map[string]json.RawMessage, len(t.Spec)+1)
-			for k, v := range t.Spec {
-				spec[k] = v
-			}
-			name, _ := json.Marshal(t.name)
-			spec["name"] = name
-			if s, ok := spec["inputSchema"]; !ok || !json.Valid(s) {
-				spec["inputSchema"] = json.RawMessage(`{"type":"object","properties":{}}`)
-			}
-			if where != "" {
-				var d string
-				json.Unmarshal(spec["description"], &d)
-				d, _ = strings.CutPrefix(d, "["+where+"]")
-				d = strings.TrimSpace("[" + where + "] " + strings.TrimSpace(d))
-				spec["description"], _ = json.Marshal(d)
-			}
-			list = append(list, spec)
+			list = append(list, hubSpecOf(t, where))
 		}
 		return map[string]any{"tools": list}, nil
 	case "tools/call":
@@ -345,15 +634,18 @@ func (s *Server) hubMCPCall(r *http.Request, agent string, m mcpMessage) (any, m
 		if MCPHub == nil || !MCPHub.On() {
 			return toolResult(errHubOff, true), nil
 		}
-		for _, t := range hubTools(r.Context(), agent) {
-			if t.name == p.Name {
-				c := HubCaller{Session: hubSession(r, agent, p.Meta)}
-				if t.Roots {
-					c.Roots, c.Client = hubRoots(r, p.Meta), hubClient(r)
-				}
-				r = r.WithContext(WithHubCaller(r.Context(), c))
-				return s.hubMCPRun(r, agent, t, p.Arguments), nil
-			}
+		ts := hubTools(r.Context(), agent)
+		// the two tools an agent given its tools on demand calls them by
+		// (hub_ondemand.go), taken whatever it was given: what it lists
+		// can change between its list and its call
+		switch p.Name {
+		case hubFindTool:
+			return hubFind(ts, p.Arguments, hubWhere(r)), nil
+		case hubCallTool:
+			return s.hubCallByName(r, agent, ts, p.Arguments, p.Meta), nil
+		}
+		if t, ok := hubToolNamed(r.Context(), ts, agent, p.Name); ok {
+			return s.hubCall(r, agent, t, p.Arguments, p.Meta), nil
 		}
 		if agent == "" {
 			return nil, map[string]any{"code": -32602, "message": "unknown tool " + p.Name + ": no MCP server in magpie's Library gives it"}
@@ -361,6 +653,59 @@ func (s *Server) hubMCPCall(r *http.Request, agent string, m mcpMessage) (any, m
 		return nil, map[string]any{"code": -32602, "message": "unknown tool " + p.Name + ": no MCP server switched on for " + agent + " in magpie's Library gives it"}
 	}
 	return nil, map[string]any{"code": -32601, "message": "method not found: " + m.Method}
+}
+
+// hubToolNamed is the tool name calls: one ts lists, or else a tool of a
+// server switched on for agent that its name starts with, <server>__<tool>,
+// which the server itself is asked for. An agent lists the tools once, and
+// a server's list can change after: magpie updated, Magpie Browser's
+// browser_tabs became the browser tool's tabs action, and it still takes
+// the old name (7e201ce20). A server whose list failed just now is asked
+// the same way, and either says why it can't run the tool.
+func hubToolNamed(ctx context.Context, ts []hubTool, agent, name string) (hubTool, bool) {
+	for _, t := range ts {
+		if t.name == name {
+			return t, true
+		}
+	}
+	var found []hubTool
+	for _, sv := range hubServersOf(ctx, agent) {
+		tool, ok := strings.CutPrefix(name, unsafeToolChars.ReplaceAllString(sv.Name, "-")+hubSep)
+		if !ok || tool == "" {
+			continue
+		}
+		if !access.Caller(ctx).MCPAllows(sv.Name, tool) {
+			continue
+		}
+		t := hubTool{HubTool: HubTool{Server: sv.Name, Tool: tool}, name: name}
+		for _, l := range ts {
+			if l.Server == sv.Name {
+				t.Roots = l.Roots
+				break
+			}
+		}
+		found = append(found, t)
+	}
+	// two servers of one name in the hub's characters: which is meant isn't known
+	if len(found) != 1 {
+		return hubTool{}, false
+	}
+	return found[0], true
+}
+
+// hubCall runs t for the caller r is: its session, and for a tool that
+// reads them, its workspaces and client (HubCaller).
+func (s *Server) hubCall(r *http.Request, agent string, t hubTool, args json.RawMessage, meta hubCallMeta) any {
+	c := HubCaller{Session: hubSession(r, agent, meta)}
+	if v := hubVisitor(r); v.Away && v.Key != "" {
+		// its browser is its key's, whatever session it names (browser.go)
+		c.Session = keyedSession(v.Key, c.Session)
+	}
+	if t.Roots {
+		c.Roots, c.Client = hubRoots(r, meta), hubClient(r)
+	}
+	r = r.WithContext(WithHubCaller(r.Context(), c))
+	return s.hubMCPRun(r, agent, t, args)
 }
 
 // hubMCPRun runs one tool on its server, held to the calling gateway key's
@@ -371,6 +716,12 @@ func (s *Server) hubMCPRun(r *http.Request, agent string, t hubTool, args json.R
 	use := mcpUseOf(r.Context())
 	use.on(t.Server)
 	use.as(agent)
+	use.named(t.name)
+	// every hub call comes here: a tool the gateway key may not use is
+	// refused whichever way it was found
+	if who := access.Caller(r.Context()); !who.MCPAllows(t.Server, t.Tool) {
+		return toolResult(keyMCPToolRefused(who, t.Server, t.Tool), true)
+	}
 	release, err := reserveFor(access.Caller(r.Context()), int64(len(args)), "", limitClock())
 	if err != nil {
 		return toolResult(err.Error(), true)

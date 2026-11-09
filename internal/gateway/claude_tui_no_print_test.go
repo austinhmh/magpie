@@ -35,13 +35,16 @@ func printMode(t *testing.T, print bool) {
 // 11-01). Turned off, the same request runs as -p.
 func TestClaudeTUIOnRefusesPrint(t *testing.T) {
 	h, started := tuiHelperHarness(t, "")
-	body := `{"model":"claude-sonnet-5","max_tokens":100,"messages":[{"role":"user","content":"sky?"}],"output_config":{"format":{"type":"json_schema","schema":{"type":"object","properties":{"color":{"type":"string"}}}}}}`
+	// an image known by its URL the interactive mode can't download (this
+	// computer's, which magpie never fetches): -p's Claude Code sends the
+	// URL as it is
+	body := `{"model":"claude-sonnet-5","max_tokens":100,"messages":[{"role":"user","content":[{"type":"image","source":{"type":"url","url":"http://127.0.0.1:1/a.png"}},{"type":"text","text":"what is it?"}]}]}`
 	ask := func() (int, string) {
 		var u Usage
 		return h.s.serveClaudeSubscription(httptest.NewRecorder(), httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body)), provider.Anthropic, h.p, "claude-sonnet-5", []byte(body), &u)
 	}
 	code, msg := ask()
-	if code == 200 || !strings.Contains(msg, "a JSON schema") || !strings.Contains(msg, "never runs it as claude -p") {
+	if code != 400 || !strings.Contains(msg, "couldn't fetch the image") {
 		t.Fatalf("%d %.300s", code, msg)
 	}
 	if runs := h.runs(); len(runs) != 0 {
@@ -51,8 +54,7 @@ func TestClaudeTUIOnRefusesPrint(t *testing.T) {
 		t.Fatalf("the helper started %d times for a refused request", n)
 	}
 	printMode(t, true)
-	// the fake's "ok" fits no schema; what counts is that -p ran it
-	if _, msg := ask(); strings.Contains(msg, "never runs it as claude -p") || len(h.runs()) == 0 {
+	if _, msg := ask(); strings.Contains(msg, "couldn't fetch the image") || len(h.runs()) == 0 {
 		t.Fatalf("turned off, it didn't run as -p: %.300s", msg)
 	}
 	if n := helperStarts(started); n != 0 {
@@ -108,6 +110,9 @@ exec "$claude" "$@"
 	}
 	if want := "-p --output-format stream-json --input-format stream-json --verbose --model haiku --tools  --strict-mcp-config --setting-sources "; !strings.Contains(args, want) {
 		t.Fatalf("Claude Code ran with %q", args)
+	}
+	if want := `--settings {"disableDeepLinkRegistration":"disable"}`; !strings.Contains(args, want) {
+		t.Fatalf("Claude Code registers no URL handler, ran with %q", args)
 	}
 	if !strings.Contains(told, `told {"message":{"content":[{"text":"hi","type":"text"}],"role":"user"},"type":"user"}`) {
 		t.Fatalf("Claude Code was told:\n%s", told)

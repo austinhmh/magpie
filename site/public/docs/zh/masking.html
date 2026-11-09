@@ -30,7 +30,10 @@
 <link rel="alternate" hreflang="en" href="https://usemagpie.ai/docs/masking">
 <link rel="alternate" hreflang="zh" href="https://usemagpie.ai/docs/zh/masking">
 <link rel="alternate" hreflang="ja" href="https://usemagpie.ai/docs/ja/masking">
+<link rel="alternate" hreflang="x-default" href="https://usemagpie.ai/docs/masking">
+<link rel="canonical" href="https://usemagpie.ai/docs/zh/masking">
 <link rel="stylesheet" href="/docs.css">
+<meta property="og:site_name" content="magpie">
 <meta property="og:title" content="本地脱敏">
 <meta property="og:description" content="密钥、密码和个人信息留在你的电脑上：请求发出前脱敏，回复里还原。">
 <meta property="og:image" content="https://usemagpie.ai/img/og.png">
@@ -51,6 +54,14 @@
     <a class="toc-only" href="/docs/zh/privacy">隐私</a>
     <a class="toc-only" href="/docs/zh/masking">本地脱敏</a>
     <a class="toc-only" href="/docs/zh/mcp-router">MCP 路由</a>
+    <a class="toc-only" href="/docs/zh/library">资源库</a>
+    <a class="toc-only" href="/docs/zh/claude-code-models">Claude Code 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/codex-models">Codex 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/gemini-cli-models">Gemini CLI 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/subscriptions">订阅用于任意 Agent</a>
+    <a class="toc-only" href="/docs/zh/local-models">本地模型</a>
+    <a class="toc-only" href="/docs/zh/opencode-models">OpenCode 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/alternatives">与 CC Switch、CCR 对比</a>
     <a href="/docs/zh/import">Add to magpie</a>
     <a href="/docs/zh/integrate">接入应用</a>
     <a href="https://github.com/yetone/magpie-releases/releases">版本发布</a>
@@ -93,7 +104,7 @@
       <li><b>打开页面</b>进入 <span class="ui">设置</span> → <span class="ui">隐私</span>。</li>
       <li><b>脱敏密钥</b>在 <span class="ui">要遮什么</span> 下把 <span class="ui">脱敏密钥</span> 设为 <span class="ui">开启</span>：API Key、私钥、Token 和密码。</li>
       <li><b>个人信息（按需）</b>把 <span class="ui">脱敏个人信息</span> 设为 <span class="ui">开启</span>，邮箱、手机号、身份证号和银行卡号也一并脱敏。打开后，下面会列出其他各类个人信息，每类有自己的开关。</li>
-      <li><b>自定义词</b>在 <span class="ui">脱敏词</span> 里填不想让厂商看到的人名、项目代号或主机名，用逗号分隔。<span class="ui">脱敏词不区分大小写</span> 打开后，<em>Nightjar</em> 也会遮掉 <em>NIGHTJAR</em>。magpie 不认识的密钥（比如你自己网关的 key）加到 <span class="ui">自定义脱敏规则</span>：填它的开头，或一个正则表达式。</li>
+      <li><b>自定义词</b>在 <span class="ui">脱敏词</span> 里填不想让厂商看到的人名、项目代号或主机名，每行一个（粘贴用逗号隔开的几个词，会各占一行）。<span class="ui">脱敏词不区分大小写</span> 打开后，<em>Nightjar</em> 也会遮掉 <em>NIGHTJAR</em>。magpie 不认识的密钥（比如你自己网关的 key）加到 <span class="ui">自定义脱敏规则</span>：填它的开头，或一个正则表达式。</li>
       <li><b>试一试</b>把一段文字粘到 <span class="ui">试一试</span>，就能看到厂商实际会收到什么。粘进去的内容不会保存。</li>
     </ol>
     <p>改动从下一个请求开始生效，不用重启，Agent 那边也不用改。实际做脱敏的是内置插件 <span class="ui">隐私遮盖</span>（<code>redact</code>，在 <span class="ui">设置</span> → <span class="ui">插件</span>），只要设置里要求了任何脱敏，它就是开着的。</p>
@@ -174,6 +185,14 @@
     <a href="/docs/zh/privacy">隐私</a>
     <a href="/docs/zh/masking">本地脱敏</a>
     <a href="/docs/zh/mcp-router">MCP 路由</a>
+    <a href="/docs/zh/library">资源库</a>
+    <a href="/docs/zh/claude-code-models">Claude Code 接入其他模型</a>
+    <a href="/docs/zh/codex-models">Codex 接入其他模型</a>
+    <a href="/docs/zh/gemini-cli-models">Gemini CLI 接入其他模型</a>
+    <a href="/docs/zh/subscriptions">订阅用于任意 Agent</a>
+    <a href="/docs/zh/local-models">本地模型</a>
+    <a href="/docs/zh/opencode-models">OpenCode 接入其他模型</a>
+    <a href="/docs/zh/alternatives">与 CC Switch、CCR 对比</a>
     <a href="/docs/zh/import">Add to magpie</a>
     <a href="/docs/zh/integrate">接入应用</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

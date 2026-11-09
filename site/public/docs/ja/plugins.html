@@ -30,7 +30,10 @@
 <link rel="alternate" hreflang="en" href="https://usemagpie.ai/docs/plugins">
 <link rel="alternate" hreflang="zh" href="https://usemagpie.ai/docs/zh/plugins">
 <link rel="alternate" hreflang="ja" href="https://usemagpie.ai/docs/ja/plugins">
+<link rel="alternate" hreflang="x-default" href="https://usemagpie.ai/docs/plugins">
+<link rel="canonical" href="https://usemagpie.ai/docs/ja/plugins">
 <link rel="stylesheet" href="/docs.css">
+<meta property="og:site_name" content="magpie">
 <meta property="og:title" content="プラグインの作り方">
 <meta property="og:description" content="OpenCode プラグインか pi パッケージひとつで、どんなサービスも magpie のプロバイダにできます。">
 <meta property="og:image" content="https://usemagpie.ai/img/og.png">
@@ -51,6 +54,14 @@
     <a class="toc-only" href="/docs/ja/privacy">プライバシー</a>
     <a class="toc-only" href="/docs/ja/masking">プライバシーマスキング</a>
     <a class="toc-only" href="/docs/ja/mcp-router">MCP ルーター</a>
+    <a class="toc-only" href="/docs/ja/library">ライブラリ</a>
+    <a class="toc-only" href="/docs/ja/claude-code-models">Claude Code で他のモデル</a>
+    <a class="toc-only" href="/docs/ja/codex-models">Codex で他のモデル</a>
+    <a class="toc-only" href="/docs/ja/gemini-cli-models">Gemini CLI で他のモデル</a>
+    <a class="toc-only" href="/docs/ja/subscriptions">サブスクを任意のエージェントで</a>
+    <a class="toc-only" href="/docs/ja/local-models">ローカルモデル</a>
+    <a class="toc-only" href="/docs/ja/opencode-models">OpenCode で他のモデル</a>
+    <a class="toc-only" href="/docs/ja/alternatives">CC Switch・CCR との比較</a>
     <a href="/docs/ja/import">magpie に追加</a>
     <a href="/docs/integrate">アプリ連携</a>
     <a href="https://github.com/yetone/magpie-releases/releases">リリース</a>
@@ -265,7 +276,8 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
     <div class="table-wrap"><table>
       <tr><th>フィールド</th><th>意味</th></tr>
       <tr><td><code>magpie.icon</code></td><td>プラグイン自身の画像。「発見」のカード（npm から、GitHub のものはリポジトリから読み込み）と「インストール済み」の行に表示され、自分の画像を持たないプロバイダにも使われます：<code>https://</code> URL または <code>data:image/…</code> URI、最大 1 MB。SVG、PNG など。</td></tr>
-      <tr><td><code>magpie.name</code></td><td>「インストール済み」の行に表示されるプラグインの名前。ページがタイトルを持たないときはサイドバーのタブ名にもなります。コミュニティのリストに載っていないプラグインだけに効きます（リストの名前が優先）。npm のパッケージ名は ASCII に限られるので、「华为云 HUAWEI」のような名前はここに書きます。1 行、最大 80 バイト。それ以外は無視されます。パッケージ自身の言葉として扱われ、レビュー済みとは表示されず、名前でプラグインを探すのにも使われません。</td></tr>
+      <tr><td><code>magpie.name</code></td><td>「インストール済み」の行に表示されるプラグインの名前。ページがタイトルを持たないときはサイドバーのタブ名にもなります。コミュニティのリストに載っていないプラグインだけに効きます（リストの名前が優先）。npm のパッケージ名は ASCII に限られるので、「华为云 HUAWEI」のような名前はここに書きます。1 行、最大 80 バイト。それ以外は無視されます。パッケージ自身の言葉として扱われ、レビュー済みとは表示されず、名前でプラグインを探すのにも使われません。<code>magpie-plugin</code> タグの付いたリポジトリでは、「発見 → 非公式 · GitHub」のカードでもリポジトリ名の代わりに表示されます。</td></tr>
+      <tr><td><code>magpie.summary</code></td><td>「発見 → 非公式 · GitHub」のカードの説明文。言語ごとに <code>{ "en": "…", "zh": "…" }</code> と書きます。ウィンドウの言語で表示され（繁体字中国語は <code>zh</code>）、なければ英語、それもなければ GitHub の説明です。1 言語 1 行、最大 300 バイト。それ以外は無視されます。名前や説明がパッケージ自身のものであるカードには「パッケージ自身の言葉」と表示されます。誰も審査していません。</td></tr>
       <tr><td><code>magpie.maxConcurrency</code></td><td>各アカウントが同時に受けるリクエスト数。1 から 1000 の整数。ユーザーがプロバイダに設定した上限が優先されます。</td></tr>
     </table></div>
     <p>同じフィールドは <code>auth</code> フックにも設定でき（<code>auth.icon</code>、<code>auth.maxConcurrency</code>）、そちらが <code>package.json</code> より優先されます。複数のプロバイダにサインインするプラグインは、プロバイダごとに <code>auth.icon</code> を設定し、<code>magpie.icon</code> をプラグイン自身のものにできます。</p>
@@ -408,6 +420,8 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
       <li><code>key</code> を含む成功は API キーとして保存されます。</li>
       <li>結果に <code>provider: "other-id"</code> を付けると、そのプラグインがサインインする別のプロバイダにサインイン情報を保存します。</li>
       <li>失敗時の <code>error</code> は magpie 独自のフィールドで、ユーザーに理由（最大 500 文字）が表示されます。なければ、サインインに失敗したことだけが表示されます。</li>
+      <li><code>authorize</code> がサインインを始められないときは、エラーを投げるか、<code>callback</code> なしの <code>{type: "failed", error}</code> を返します。ユーザーにはその理由が表示されます。</li>
+      <li>ユーザーがキャンセルした、または時間切れになったサインインはそこで終わります。その後に <code>callback</code> が返したものは捨てられ、そのサインインのための fetch も失敗します。magpie はサインインの <code>AbortSignal</code> を <code>callback(code, { signal })</code>（と <code>authorize(inputs, { signal })</code>）で渡すので、長く待つ callback は中止されたときに止められます。</li>
       <li><code>inputs</code> は <code>prompts</code> を持つメソッドにだけ渡されます。prompts のないメソッドには、OpenCode の TUI が呼ぶときと同じく <code>undefined</code> が渡ります。空のオブジェクトは OpenCode の CLI の呼び方で、その場合ターミナルで質問するプラグインもあります。</li>
     </ul>
     <h3>サインイン前の質問</h3>
@@ -659,7 +673,7 @@ m plugin logout acme</pre>
   <span class="s">"providers"</span>: [<span class="s">"acme"</span>],
   <span class="s">"summary"</span>: { <span class="s">"en"</span>: <span class="s">"Your Acme Coding Plan."</span>, <span class="s">"zh"</span>: <span class="s">"使用你的 Acme Coding Plan。"</span> } }</pre>
         </div>
-        ミドルウェアのエントリには <code>"kind": "middleware"</code> を書き、<code>providers</code> は書きません。<span class="ui">ゲートウェイミドルウェア</span> の下に表示されます。ほかの種類も同じで、<code>"kind": "tools"</code> は <span class="ui">エージェント向けツール</span>、<code>"kind": "page"</code> は <span class="ui">ページ</span>、<code>"kind": "agent"</code> は <span class="ui">エージェント</span> の下に表示されます。<code>MAGPIE_PLUGIN_MARKET=&lt;url&gt;</code> は magpie に別の一覧を参照させます（自分の一覧の確認に便利です）。<code>off</code> にすると内蔵のコピーだけを使います。</li>
+        ミドルウェアのエントリには <code>"kind": "middleware"</code> を書き、<code>providers</code> は書きません。<span class="ui">ゲートウェイミドルウェア</span> の下に表示されます。ほかの種類も同じで、<code>"kind": "tools"</code> は <span class="ui">エージェント向けツール</span>、<code>"kind": "page"</code> は <span class="ui">ページ</span>、<code>"kind": "agent"</code> は <span class="ui">エージェント</span> の下に表示されます。これらのセクションに並ぶのはコミュニティ自身のパッケージで、エントリに <code>"community": true</code> があります。自分のリポジトリから公開したパッケージはこれを書きません。セクションには出ませんが、<span class="ui">プラグイン</span> の検索で名前・説明・公開者から見つかり、カードには magpie コミュニティのバッジではなく npm の公開者が表示されます。<code>MAGPIE_PLUGIN_MARKET=&lt;url&gt;</code> は magpie に別の一覧を参照させます（自分の一覧の確認に便利です）。<code>off</code> にすると内蔵のコピーだけを使います。</li>
       <li><b>GitHub のトピック。</b>GitHub で <code>magpie-plugin</code> トピックを付けたリポジトリは、<span class="ui">プラグイン → 発見 → 非公式 · GitHub</span> に、スターの多い順に、誰もレビューしていないものとして表示されます。<code>package.json</code> はリポジトリのルートに置いてください。<code>repository</code> がそのリポジトリを指す形で npm に公開されていれば npm からインストールされ、そうでなければリポジトリの現在のコードがインストールされます。そのため読み込むファイルはコミットしておく必要があり、<code>dist</code> を公開時にしかビルドしないリポジトリは表示されません。フォーク、アーカイブ済みのリポジトリ、magpie-community 自身のものも表示されません。magpie が GitHub に問い合わせるのは最大で 10 分に 1 回なので、トピックを付けたリポジトリは数分で表示されます。カードには <code>package.json</code> の <code>"magpie": { "icon": "…" }</code> で指定したアイコンが表示され、ない場合はパズルのアイコンになります。ライセンスは GitHub がリポジトリの <code>LICENSE</code> ファイルから読み取ったものです。GitHub がどのライセンスか判定できない場合（<code>NOASSERTION</code>。MIT の本文に 1 行加えた場合など）やファイルがない場合は、<code>package.json</code> の <code>license</code> を表示します。npm からインストールされるプラグインは <code>package.json</code> のものを表示します。</li>
       <li><b>コミュニティのパッケージ。</b><a href="https://github.com/magpie-community/plugins">magpie-community/plugins</a> に貢献するには：
         <ul>
@@ -804,6 +818,7 @@ claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/to
     <p>設定 → プラグインには各プラグインのツールがこの名前で表示され、サーバーのアドレスをコピーできます。<code>args</code> は zod のフィールド定義（<code>tool.schema</code> は zod）、zod オブジェクト、または JSON Schema オブジェクトです。エージェントにはこれが示され、magpie は <code>execute</code> の前に呼び出しの引数をこれで検証します。引数が正しくなければ、その引数を示すエラーを返します。<code>ctx</code> は OpenCode と同じで、<code>agent</code> は呼び出したエージェントです。ツールの実行時間は 55 秒までで、時間切れになると <code>ctx.abort</code> が発火します。</p>
     <p>このサーバーは組み込みプラグイン <span class="ui">プラグインのツール</span> が提供します。オンのプラグインがツールを提供している間はオンのままで、オフのときはツールが一覧に出ず、呼び出しにはオフであることが返ります。ゲートウェイキーでの呼び出しはそのキーの上限に数えられます。ツールはプロバイダープラグインと同じくあなたの権限でプラグインホスト内で動き、結果は呼び出したエージェントにだけ返ります。</p>
     <p>ツールを提供するプラグインは、ライブラリの MCP タブにもそれぞれ独立したサーバーとして現れ、プラグインの短い名前（<code>search1api</code>）が付きます。アドレスを手で追加する必要はありません。<a href="mcp-router.html">MCP ルーター</a>がオンなら、そのツールはルーターを使うすべてのエージェントに <code>search1api__search</code> として出ます。ほかのライブラリのサーバーと同じく、エージェントごとにオン・オフでき、ツールを一つずつ止めることもできます。削除すると、プラグインを外して追加し直すまで戻りません。</p>
+    <p>プロバイダーのためにプラグインは残し、ツールはどのエージェントにも渡したくないときは、<span class="ui">プラグイン</span> › <span class="ui">インストール済み</span>でそのツールの行の<span class="ui">エージェントに隠す</span>を押します。サーバーはどのエージェントにも、ルーターのアドレスにつなぐアプリにも渡されず、更新、オフとオン、再起動のあとも変わりません。<span class="ui">エージェントに渡す</span>で、元のエージェントに戻ります。</p>
 
     <h2 id="agents"><a class="anchor" href="#agents">エージェントプラグイン</a></h2>
     <p>プラグインは<em>エージェント</em>を追加することもできます。magpie に組み込みの設定がないエージェントです。そのエージェントがモデルをどこに書くか、magpie のゲートウェイを使うために他に何を書くかを伝えます。するとエージェントは magpie 自身のものと同じように<span class="ui">エージェント</span>ページに並びます。その行で magpie のモデルを選ぶと、magpie はモデルをゲートウェイのアドレスとエージェント専用のキーと一緒に設定へ書き込み、スイッチを切るとすべてユーザーの元の状態に戻します。下の例は <a href="https://aider.chat">Aider</a> を追加します。</p>
@@ -841,6 +856,7 @@ claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/to
       <tr><td><code>config</code></td><td>magpie が編集するファイル。<code>~</code> と <code>$VAR</code> は展開されます。なければ作成します。</td></tr>
       <tr><td><code>format</code></td><td>ファイル名から分からないときの <code>json</code>、<code>yaml</code>、<code>env</code>（<code>.json</code>/<code>.jsonc</code>、<code>.yaml</code>/<code>.yml</code>、<code>.env</code>）。TOML はまだ対応していません。</td></tr>
       <tr><td><code>model</code></td><td>ファイル内のモデルのキー。JSON と YAML ではドット区切りのパス（<code>llm.model</code>）。モデルをエージェント自身で、<code>connect</code> が書くモデルの中から選ぶ場合（Raycast など）は省略します。その行は接続スイッチだけになってモデルの選択欄は出ず、<code>connect</code>（このプラグインには必須）は <code>model</code> なしで呼ばれます。</td></tr>
+      <tr><td><code>startup</code></td><td>新しいセッションが始まるモデルを、<code>connect</code> が書くファイルとは別のファイルに置くエージェント向けで、<code>model</code> の代わりに使います。そのファイルの <code>config</code> と <code>format</code>、<code>model</code> はその中のモデルのキー、<code>keys</code> はモデルの横にそのまま書くキーです。PiG はプロバイダーを <code>models.json</code> に、既定のモデルを <code>settings.json</code> に置きます：<code>startup: { config: "~/.pig/agent/settings.json", model: "defaultModel", keys: { defaultProvider: "magpie" } }</code>。行でモデルを選べるようになり、切断すると両方のファイルが元に戻ります。v0.1.3008 より前の magpie はこのプラグインを <code>model</code> のないものとして読みます。</td></tr>
       <tr><td><code>prefix</code></td><td>magpie のモデル id の前に書くもの。LiteLLM 経由で OpenAI 互換エンドポイントを使うエージェントなら <code>openai/</code>。id 自体はゲートウェイが受け付ける <code>&lt;プロバイダー&gt;/&lt;モデル&gt;</code> です。</td></tr>
       <tr><td><code>bin</code>、<code>dir</code></td><td>エージェントがインストール済みかを示す <code>PATH</code> 上のコマンドとフォルダー。</td></tr>
       <tr><td><code>ua</code></td><td>キーなしで来たリクエストを使用量で名付けるための、エージェントの User-Agent に含まれる語。</td></tr>
@@ -858,6 +874,7 @@ claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/to
       <li><b>実行のされ方。</b><a href="#middleware">ミドルウェア</a>と同じく、magpie 自身のプロセスの moejs で動きます。インポートはプラグイン内のファイルのみ、Node API はなく、<code>console.log</code> は magpie のログに出ます。読み込みと <code>connect</code> はそれぞれ 1 秒まで。モジュールが読み込めない、または <code>connect</code> が例外を投げたプラグインは、プラグインページの行に理由を表示し、何も書き込みません。</li>
       <li><b>ライブラリ。</b><code>library</code> があれば、組み込みのエージェントと同じくライブラリの中身を受け取ります：指示はファイル内の magpie の目印の行の間に、MCP サーバーはユーザー自身のものと同じファイルに（ユーザーが足したフィールドは残ります）、スキルはリンクかコピーでフォルダに入ります。外すときは magpie が書いた分だけを取り除き、元の内容は magpie のバックアップに残ります。<code>mcpFormat</code> がリストにない、または <code>mcp</code> に <code>mcpFormat</code> がないと、プラグインは読み込まれません。</li>
       <li><b>宣言。</b><code>package.json</code> の <code>"magpie": { "agent": "./agent.js" }</code>、または <code>*.agent.js</code>（または <code>.mjs</code>）という単一ファイル。1 つのパッケージがプロバイダー、ミドルウェア、エージェントを兼ねられます。プラグインマーケットではエージェントのエントリーに <code>"kind": "agent"</code> を付け、<span class="ui">エージェント</span>の下に並びます。コミュニティのものは <code>@magpie-community/agent-&lt;name&gt;</code> と名付けます。</li>
+      <li><b>ランタイムが必要なエージェント。</b>エージェントのファイルは moejs のモジュールのままで、タイマーもプラグイン外からの import もありません。エージェントにそれ以上（タイマー、ファイルの監視、アプリ自身の設定への値の反映）が必要なときは、パッケージに Bun のモジュールを <code>main</code> として加えられ、プロバイダープラグインのものと同じように動きます。それでもエージェントプラグインです。<code>magpie.agent</code> を宣言したパッケージは、<code>main</code> の有無にかかわらず、GitHub のものも <span class="ui">エージェント</span> の下に並び、<span class="ui">インストール済み</span> の行にはエージェントのチップが付きます。プロバイダーのチップが付くのは、そのモジュールがプロバイダーを提供するときだけです。</li>
     </ul>
 
     <h2 id="pages"><a class="anchor" href="#pages">ウィンドウのページ</a></h2>
@@ -909,6 +926,7 @@ document.getElementById(<span class="s">"calls"</span>).textContent = `${s.calls
     <ul>
       <li>ページはスクリプトだけを許したサンドボックスのフレーム（<code>sandbox="allow-scripts"</code>、<code>Content-Security-Policy</code> でも同じ）で、独自のオリジンで動きます。ウィンドウにも、magpie の cookie にも、ウィンドウのストレージにも届きません。</li>
       <li>ポリシーで読み込めるのは自分のファイルだけです。<code>connect-src 'none'</code> なので <code>fetch</code>、WebSocket、beacon は使えず、フォームやフレームもありません。スクリプトはファイル（<code>&lt;script src&gt;</code>）にする必要があり、インラインは使えません。インラインのスタイルと <code>data:</code> の画像は使えます。</li>
+      <li>sandbox のフレームでは、WebKit（iPhone と Mac の Safari、Mac と Linux のウィンドウ）は <code>'self'</code> やスキームのないソースを何にも一致させないことがあります。<code>connect-src 'self'</code> の <code>fetch</code> は拒否されます。プラグインのサービスが返すページも sandbox で動くので、自分のポリシーには完全なソース（<code>https://…</code>）を書いてください。サービスが <code>magpie web</code> 経由で送る <code>Content-Security-Policy</code> ヘッダーでは、magpie が各 <code>'self'</code> の後にサービスのアドレスを足します。<code>&lt;meta&gt;</code> タグのものには足しません。</li>
       <li>このようなフレームが送れるリクエスト（<code>Origin: null</code>、フレームからのリクエスト、ほかのサイトのリクエスト）は magpie の API がすべて拒否するので、ポリシーがなくてもページは API に入れません。ファイルは <code>/_magpie/plugin/&lt;token&gt;/</code> から配信され、token は magpie を起動するたびに変わります。</li>
       <li>それでもページは自分をほかのサイトへ移動できます。そのサイトがフレームを持つことになるので、読み取りは秘密でないものだけを返します。ページが読めるものは公開されたものとして扱ってください。</li>
       <li>ページが捕まえなかったエラーは、その場所に<span class="ui">このページは動作を停止しました</span>と<span class="ui">再試行</span>を表示します。ページ自身のスクリプトのエラーはページには「Script error.」としか届かないので、詳しくはウィンドウのコンソールを見てください。</li>
@@ -1023,6 +1041,14 @@ document.getElementById(<span class="s">"calls"</span>).textContent = `${s.calls
     <a href="/docs/ja/privacy">プライバシー</a>
     <a href="/docs/ja/masking">プライバシーマスキング</a>
     <a href="/docs/ja/mcp-router">MCP ルーター</a>
+    <a href="/docs/ja/library">ライブラリ</a>
+    <a href="/docs/ja/claude-code-models">Claude Code で他のモデル</a>
+    <a href="/docs/ja/codex-models">Codex で他のモデル</a>
+    <a href="/docs/ja/gemini-cli-models">Gemini CLI で他のモデル</a>
+    <a href="/docs/ja/subscriptions">サブスクを任意のエージェントで</a>
+    <a href="/docs/ja/local-models">ローカルモデル</a>
+    <a href="/docs/ja/opencode-models">OpenCode で他のモデル</a>
+    <a href="/docs/ja/alternatives">CC Switch・CCR との比較</a>
     <a href="/docs/ja/import">magpie に追加</a>
     <a href="/docs/integrate">アプリ連携</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

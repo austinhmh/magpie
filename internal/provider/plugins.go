@@ -55,6 +55,29 @@ const (
 // (host.js), as it does the two above.
 const FallbackHeader = "X-Magpie-Fallback"
 
+// WaitHeader tells a magpie's gateway how many seconds its client waits
+// for the answer: a model test asking a remote magpie sends its own wait,
+// and the gateway takes no retry pause or patience round that would end
+// past it, so the test is told the error rather than running out of time
+// (plugins#827). Like every X-Magpie- header it goes no further.
+const WaitHeader = "X-Magpie-Wait"
+
+// SessionToPluginHeader and SubagentToPluginHeader tell a plugin's fetch
+// the session the agent named (sessionOf: Claude Code's
+// x-claude-code-session-id and the rest) and the Claude Code subagent the
+// request is of (x-claude-code-agent-id). The agent's own headers never
+// reach a plugin, so a plugin that keeps state per conversation (Devin's
+// cache keepalive) had only the request's text to go by, and Claude Code
+// Auto's permission check, whose history grows in its one merged user
+// message, looked like a new conversation each time
+// (magpie-community/plugins#620). Each is left off when the agent named
+// none. The plugin host takes them off whatever the plugin sends on, as it
+// does the ones above.
+const (
+	SessionToPluginHeader  = "X-Magpie-Session"
+	SubagentToPluginHeader = "X-Magpie-Subagent"
+)
+
 // warmPlugin starts p's plugin host and runs its account's loader, which
 // may renew the sign-in, under ctx and through the account's proxy: what
 // a plugin's first fetch waits for besides its vendor. A failure is left
@@ -129,6 +152,30 @@ func (p Provider) PluginProvider() string {
 		return ""
 	}
 	return p.Account.plugin.ID
+}
+
+// ModelLoads is how busy each model is that a plugin reported a load for
+// in the last plugin.LoadFresh, by the ref an agent's model picker gives
+// it ("provider/model", lowercased), the figure the provider editor shows
+// by the model (plugin.ModelLoad): a model the user lists by another id
+// (SetModelID) under that id, one listed as its own under its own. A
+// model@size the plugin reported only by its model is left for the
+// reader to look up by the model (axelburks on Discord: the Agents page
+// shows it too). Nothing reported, nothing more is read.
+func ModelLoads(now time.Time) map[string]float64 {
+	out := map[string]float64{}
+	for pp, ms := range plugin.FreshLoads(now) {
+		id := PluginID(pp)
+		for own, pct := range ms {
+			out[strings.ToLower(id+"/"+own)] = pct
+		}
+		for own, listed := range modelIDsOf(id).local {
+			if pct, _, ok := plugin.ModelLoad(pp, own, now); ok {
+				out[strings.ToLower(id+"/"+listed)] = pct
+			}
+		}
+	}
+	return out
 }
 
 // OpenAIBase is where p takes the OpenAI-shaped requests that are no chat
@@ -346,7 +393,7 @@ func pluginCatalog(pp plugin.Provider) []catalog.Model {
 		// pick (laomao04_65777 on Discord); a custom provider's same id
 		// borrows them (effortsOf)
 		if len(c.Efforts) == 0 && (m.Reasoning || PluginServes(pp.ID) || pp.ID == "cline") {
-			c.Efforts = borrowedEfforts(m.ID)
+			c.Efforts, c.EffortsBorrowed = borrowedEfforts(m.ID), true
 		}
 		// OpenCode's price of a model it has none for is 0, as the
 		// plugins give a plan's models: a price is only one above it
@@ -355,9 +402,12 @@ func pluginCatalog(pp plugin.Provider) []catalog.Model {
 		}
 		if m.ImageSaid {
 			c.ImageInput = &m.Image
-			// what else it takes (audio, video, pdf), only where the
-			// plugin said what it takes: the host's default for a model
-			// it said nothing of is text alone (#1595)
+		}
+		// what else it takes (audio, video, pdf), where someone said it:
+		// the plugin's word stands whether or not it spoke of images
+		// (Command Code's plans, #4436); the host's default for a model
+		// said nothing of is text alone and is nobody's word (#1595)
+		if m.InputsSaid {
 			c.InputModalities = m.Inputs
 		}
 		c.OutputModalities = m.Outputs
@@ -809,6 +859,9 @@ func init() {
 		}
 		return ProxyOf(mid)
 	}
+	// a plugin provider switched off in magpie isn't asked its models:
+	// Off means no request goes to it (ChangQiu on Discord)
+	plugin.ListingOff = pluginsOff
 	// a models hook saying its account's sign-in expired marks it, as a
 	// built-in whose model list the vendor refused marked the account
 	plugin.OnSignIn(func(id, account, said string) {
@@ -886,7 +939,8 @@ func firstOf(ss ...string) string {
 
 // Do sends req, through the account's own transport when it has one (a
 // plugin's), the client the account asks for this request when it asks
-// for one (ZCode's Start Plan: zcodeStartClient), and client otherwise.
+// for one (ZCode's Start Plan: zcodeStartClient), and client otherwise,
+// following a redirect only to the request's own origin (Keyed).
 //
 // A request sent for magpie's own test (probelog.With) is written into the
 // request log here, whichever way it goes: a plugin's fetch and a client
@@ -906,9 +960,21 @@ func (p Provider) Do(client *http.Client, req *http.Request) (*http.Response, er
 	return p.do(client, req)
 }
 
+// SendsThroughPlugin, set by the gateway, is told of each request handed
+// to a plugin's account, which goes past the gateway's own transport, as
+// it goes, and what came back for it: the call's headers both ways, for
+// Recent calls (gateway's wire_headers.go).
+var SendsThroughPlugin func(id string, req *http.Request) func(*http.Response, error)
+
 func (p Provider) do(client *http.Client, req *http.Request) (*http.Response, error) {
 	if p.Account != nil && p.Account.transport != nil {
-		return p.Account.transport(req)
+		if SendsThroughPlugin == nil {
+			return p.Account.transport(req)
+		}
+		done := SendsThroughPlugin(p.ID, req)
+		res, err := p.Account.transport(req)
+		done(res, err)
+		return res, err
 	}
 	if p.Account != nil && p.Account.clientFor != nil {
 		if c := p.Account.clientFor(req); c != nil {
@@ -916,5 +982,26 @@ func (p Provider) do(client *http.Client, req *http.Request) (*http.Response, er
 		}
 	}
 	req.Header.Del(ConversationHeader)
-	return client.Do(req)
+	// the account's credential goes to its own origin only (redirect.go)
+	return Keyed(client).Do(req)
+}
+
+// pluginsOff is the plugins' own ids of the plugin providers switched off
+// in magpie, which a listing of the plugins asks nothing: a plugin's id
+// is magpie's (PluginID) as it is, or with "-plugin" taken off. It reads
+// providers.json alone, never the plugins' list, which a listing is
+// asking for.
+func pluginsOff() []string {
+	var out []string
+	for _, p := range storedFile().Providers {
+		if !p.Off {
+			continue
+		}
+		for _, id := range []string{p.ID, strings.TrimSuffix(p.ID, "-plugin")} {
+			if id != "" && PluginID(id) == p.ID && !slices.Contains(out, id) {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }

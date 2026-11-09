@@ -30,7 +30,10 @@
 <link rel="alternate" hreflang="en" href="https://usemagpie.ai/docs/plugins">
 <link rel="alternate" hreflang="zh" href="https://usemagpie.ai/docs/zh/plugins">
 <link rel="alternate" hreflang="ja" href="https://usemagpie.ai/docs/ja/plugins">
+<link rel="alternate" hreflang="x-default" href="https://usemagpie.ai/docs/plugins">
+<link rel="canonical" href="https://usemagpie.ai/docs/plugins">
 <link rel="stylesheet" href="/docs.css">
+<meta property="og:site_name" content="magpie">
 <meta property="og:title" content="Writing plugins">
 <meta property="og:description" content="Turn any service into a magpie provider with an OpenCode plugin or a pi package.">
 <meta property="og:image" content="https://usemagpie.ai/img/og.png">
@@ -51,6 +54,14 @@
     <a class="toc-only" href="/docs/privacy">Privacy</a>
     <a class="toc-only" href="/docs/masking">Privacy masking</a>
     <a class="toc-only" href="/docs/mcp-router">MCP router</a>
+    <a class="toc-only" href="/docs/library">Library</a>
+    <a class="toc-only" href="/docs/claude-code-models">Models in Claude Code</a>
+    <a class="toc-only" href="/docs/codex-models">Models in Codex</a>
+    <a class="toc-only" href="/docs/gemini-cli-models">Models in Gemini CLI</a>
+    <a class="toc-only" href="/docs/subscriptions">Subscriptions in any agent</a>
+    <a class="toc-only" href="/docs/local-models">Local models</a>
+    <a class="toc-only" href="/docs/opencode-models">Models in OpenCode</a>
+    <a class="toc-only" href="/docs/alternatives">magpie vs CC Switch vs CCR</a>
     <a href="/docs/import">Add to magpie</a>
     <a href="/docs/integrate">Integrate</a>
     <a href="https://github.com/yetone/magpie-releases/releases">Releases</a>
@@ -265,7 +276,8 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
     <div class="table-wrap"><table>
       <tr><th>Field</th><th>Meaning</th></tr>
       <tr><td><code>magpie.icon</code></td><td>The plugin’s picture, on its card in Discover (read from npm, or from the repository for one on GitHub) and its row in Installed, and the picture of each of its providers that doesn’t give its own: an <code>https://</code> URL or a <code>data:image/…</code> URI, at most 1 MB. SVG, PNG and the like.</td></tr>
-      <tr><td><code>magpie.name</code></td><td>The plugin’s name on its row in Installed, and on its sidebar tab when its page gives no title, for a plugin the community’s list doesn’t name (the list’s name wins). The package’s npm name has to be ASCII, so a name like 华为云 HUAWEI goes here. One line, at most 80 bytes; anything else is ignored. It is never shown as reviewed, and never used to find a plugin by name.</td></tr>
+      <tr><td><code>magpie.name</code></td><td>The plugin’s name on its row in Installed, and on its sidebar tab when its page gives no title, for a plugin the community’s list doesn’t name (the list’s name wins). The package’s npm name has to be ASCII, so a name like 华为云 HUAWEI goes here. One line, at most 80 bytes; anything else is ignored. It is never shown as reviewed, and never used to find a plugin by name. A repository tagged <code>magpie-plugin</code> shows it on its card under Discover → Unofficial, on GitHub too, in place of the repository’s name.</td></tr>
+      <tr><td><code>magpie.summary</code></td><td>Its card’s line under Discover → Unofficial, on GitHub, by language: <code>{ "en": "…", "zh": "…" }</code>, in the window’s language (zh-TW reads <code>zh</code>), else English, else GitHub’s description. One line of at most 300 bytes a language; anything else is ignored. A card showing a name or summary of the package’s own says “Its own words”: nobody reviewed them.</td></tr>
       <tr><td><code>magpie.maxConcurrency</code></td><td>How many requests each account takes at once, a whole number from 1 to 1000. A limit the user sets on the provider wins over it.</td></tr>
     </table></div>
     <p>The same fields can be set on the <code>auth</code> hook (<code>auth.icon</code>, <code>auth.maxConcurrency</code>), where they win over <code>package.json</code>. A plugin that signs in to several providers can give each its own <code>auth.icon</code> and keep <code>magpie.icon</code> for the plugin itself.</p>
@@ -408,6 +420,8 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
       <li>A success with <code>key</code> is saved as an API key.</li>
       <li><code>provider: "other-id"</code> on the result saves the sign-in to another provider the plugin signs in to.</li>
       <li><code>error</code> on a failure is magpie’s own field: the user sees why (up to 500 characters). Without it, they see only that the sign-in failed.</li>
+      <li>When <code>authorize</code> can’t start the sign-in, throw, or return <code>{type: "failed", error}</code> with no <code>callback</code>: the user sees that reason.</li>
+      <li>A sign-in the user cancels, or that times out, is over: whatever <code>callback</code> returns after it is dropped, and the fetches it makes for it fail. magpie also passes the sign-in’s <code>AbortSignal</code> as <code>callback(code, { signal })</code> (and <code>authorize(inputs, { signal })</code>), so a callback that waits a long time can stop when it aborts.</li>
       <li><code>inputs</code> is passed only to a method with <code>prompts</code>. A method without prompts gets <code>undefined</code>, as OpenCode’s TUI calls it. An empty object is how OpenCode’s CLI calls, and some plugins then ask on the terminal.</li>
     </ul>
     <h3>Questions before signing in</h3>
@@ -659,7 +673,7 @@ m plugin logout acme</pre>
   <span class="s">"providers"</span>: [<span class="s">"acme"</span>],
   <span class="s">"summary"</span>: { <span class="s">"en"</span>: <span class="s">"Your Acme Coding Plan."</span>, <span class="s">"zh"</span>: <span class="s">"使用你的 Acme Coding Plan。"</span> } }</pre>
         </div>
-        A middleware’s entry has <code>"kind": "middleware"</code> and no <code>providers</code>; it is listed under <span class="ui">Gateway middleware</span>. The other kinds are listed the same way: <code>"kind": "tools"</code> under <span class="ui">Tools for agents</span>, <code>"kind": "page"</code> under <span class="ui">Pages</span> and <code>"kind": "agent"</code> under <span class="ui">Agents</span>. <code>MAGPIE_PLUGIN_MARKET=&lt;url&gt;</code> points magpie at another list, which is useful to check yours, and <code>off</code> keeps to the built-in copy.</li>
+        A middleware’s entry has <code>"kind": "middleware"</code> and no <code>providers</code>; it is listed under <span class="ui">Gateway middleware</span>. The other kinds are listed the same way: <code>"kind": "tools"</code> under <span class="ui">Tools for agents</span>, <code>"kind": "page"</code> under <span class="ui">Pages</span> and <code>"kind": "agent"</code> under <span class="ui">Agents</span>. Those sections hold the community’s own packages, whose entries have <code>"community": true</code>. A package published from your own repository leaves that out: it isn’t in the sections, the search on <span class="ui">Plugins</span> finds it by its name, summary or publisher, and its card shows its npm publisher, not the magpie community badge. <code>MAGPIE_PLUGIN_MARKET=&lt;url&gt;</code> points magpie at another list, which is useful to check yours, and <code>off</code> keeps to the built-in copy.</li>
       <li><b>A GitHub topic.</b> A repository tagged <code>magpie-plugin</code> on GitHub is shown under <span class="ui">Plugins → Discover → Unofficial, on GitHub</span>, the most starred first, marked as reviewed by no one. Keep <code>package.json</code> at the repository’s root. Published to npm with <code>repository</code> naming the repository, it is installed from npm; otherwise from the repository as it stands, so the file it loads must be committed: one whose <code>dist</code> is built only to publish is left out. Forks, archived repositories and magpie-community’s own are left out too. magpie asks GitHub at most every ten minutes, so a repository shows within minutes of being tagged. Its card shows the icon <code>"magpie": { "icon": "…" }</code> in its <code>package.json</code> gives, else a puzzle piece. Its licence is the one GitHub reads from the repository’s <code>LICENSE</code> file; when GitHub can’t match the file to a licence (it says <code>NOASSERTION</code>, as for MIT’s text with a line added) or there is none, the card shows <code>package.json</code>’s <code>license</code>. A plugin installed from npm shows <code>package.json</code>’s.</li>
       <li><b>The community packages.</b> To contribute one to <a href="https://github.com/magpie-community/plugins">magpie-community/plugins</a>:
         <ul>
@@ -804,6 +818,7 @@ claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/to
     <p>Settings → Plugins lists each plugin’s tools by these names and copies the server’s address. <code>args</code> is a zod shape (<code>tool.schema</code> is zod), a zod object or a JSON Schema object. The agent is shown it, and magpie checks a call’s arguments against it before <code>execute</code> runs; a wrong argument is answered as an error naming it. <code>ctx</code> is OpenCode’s, with <code>agent</code> the agent that called. A tool has 55 seconds, and <code>ctx.abort</code> fires when they are up.</p>
     <p>The built-in plugin <span class="ui">Plugin tools</span> serves the server. It stays on while a plugin that is on gives a tool; off, no tool is listed and a call says so. A call made with a gateway key counts against that key’s limits. A tool runs in the plugin host with your rights, as a provider plugin does, and its answer goes only to the agent that called it.</p>
     <p>Each plugin that gives tools is also a server of its own in the Library’s MCP tab, named by the plugin’s short name (<code>search1api</code>), so you don’t have to add the address by hand. With the <a href="mcp-router.html">MCP router</a> on, its tools are in the router of every agent the router is given, as <code>search1api__search</code>; switch it on or off per agent, or turn single tools off, as with any Library server. Removed, it comes back only when you remove the plugin and add it again.</p>
+    <p>To keep a plugin for its providers but give its tools to no agent, press <span class="ui">Hide from agents</span> on its tools line under <span class="ui">Plugins</span> › <span class="ui">Installed</span>. Its server is then given to no agent, nor to an app at the router’s address, through updates, the plugin off and on, and restarts. <span class="ui">Give to agents</span> gives it back to the agents it had.</p>
 
     <h2 id="agents"><a class="anchor" href="#agents">Agent plugins</a></h2>
     <p>A plugin can also add an <em>agent</em>: one magpie has no setup of its own for. It says where the agent keeps its model and what else to write there for the agent to use magpie’s gateway. The agent is then on the <span class="ui">Agents</span> page like magpie’s own: pick one of magpie’s models in its row and magpie writes it into the agent’s config, with the gateway’s address and a key of the agent’s own; switch it off and everything goes back to how the user had it. The example below adds <a href="https://aider.chat">Aider</a>.</p>
@@ -841,6 +856,7 @@ claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/to
       <tr><td><code>config</code></td><td>The file magpie edits. <code>~</code> and <code>$VAR</code> are expanded. It is made when it isn’t there.</td></tr>
       <tr><td><code>format</code></td><td><code>json</code>, <code>yaml</code> or <code>env</code>, when the file’s name doesn’t say it (<code>.json</code>/<code>.jsonc</code>, <code>.yaml</code>/<code>.yml</code>, <code>.env</code>). TOML isn’t supported yet.</td></tr>
       <tr><td><code>model</code></td><td>The key of the model in the file, as a dotted path for JSON and YAML (<code>llm.model</code>). Leave it out for an agent whose model is picked in the agent itself, among the models <code>connect</code> writes (Raycast): the row is then a switch with no model picker, and <code>connect</code>, which such a plugin must have, is called without <code>model</code>.</td></tr>
+      <tr><td><code>startup</code></td><td>For an agent that keeps the model a session starts on in another file than the one <code>connect</code> writes, in place of <code>model</code>: <code>config</code> and <code>format</code> of that file, <code>model</code> the key of the model in it, and <code>keys</code> written beside the model as they are. PiG keeps its providers in <code>models.json</code> and its default in <code>settings.json</code>: <code>startup: { config: "~/.pig/agent/settings.json", model: "defaultModel", keys: { defaultProvider: "magpie" } }</code>. The row then picks the model, and each file is put back as it was. A magpie older than v0.1.3008 reads such a plugin as one with no <code>model</code>.</td></tr>
       <tr><td><code>prefix</code></td><td>Written before magpie’s model id: <code>openai/</code> for an agent that reaches OpenAI-compatible endpoints through LiteLLM. The id itself is <code>&lt;provider&gt;/&lt;model&gt;</code>, as the gateway takes it.</td></tr>
       <tr><td><code>bin</code>, <code>dir</code></td><td>The command on <code>PATH</code> and the folder that say the agent is installed.</td></tr>
       <tr><td><code>ua</code></td><td>Words of the agent’s User-Agent, to name its requests in Usage when they come without its key.</td></tr>
@@ -858,6 +874,7 @@ claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/to
       <li><b>How it runs.</b> As <a href="#middleware">middleware</a> does: in moejs, in magpie’s own process, with imports inside the plugin only, no Node APIs and <code>console.log</code> into magpie’s log. Loading and <code>connect</code> each have a second. A plugin whose module doesn’t load, or whose <code>connect</code> throws, says why in its row on the Plugins page and writes nothing.</li>
       <li><b>The Library.</b> With <code>library</code>, the agent is one of the Library’s agents: its instructions go between magpie’s marker lines in the file, its MCP servers into the file beside the user’s own (whose other fields are kept), and its skills linked or copied into the folder. Taking one off takes away only what magpie wrote there, and what a file held before is kept in magpie’s backups. An <code>mcpFormat</code> that isn’t one of the list, or an <code>mcp</code> without one, keeps the plugin from loading.</li>
       <li><b>Declaring it.</b> <code>"magpie": { "agent": "./agent.js" }</code> in <code>package.json</code>, or a single file named <code>*.agent.js</code> (or <code>.mjs</code>). A package can be a provider, middleware and an agent at once. In the plugin market an agent’s entry has <code>"kind": "agent"</code> and is listed under <span class="ui">Agents</span>; a community one is named <code>@magpie-community/agent-&lt;name&gt;</code>.</li>
+      <li><b>An agent that needs a runtime.</b> The agent file stays a moejs module, with no timers and nothing imported from outside the plugin. When the agent needs more (a timer, a file watched, a value carried over into the app’s own config), the package can also have a Bun module as its <code>main</code>, run as a provider plugin’s is. It is still an agent plugin: a package that declares <code>magpie.agent</code> is listed under <span class="ui">Agents</span>, on GitHub too, with a <code>main</code> or without, and its row in <span class="ui">Installed</span> wears the Agent chip, and the Provider chip only when its module serves a provider.</li>
     </ul>
 
     <h2 id="pages"><a class="anchor" href="#pages">Pages in the window</a></h2>
@@ -909,6 +926,7 @@ document.getElementById(<span class="s">"calls"</span>).textContent = `${s.calls
     <ul>
       <li>The page runs in a frame sandboxed to scripts alone (<code>sandbox="allow-scripts"</code>, and the same in its <code>Content-Security-Policy</code>), in an origin of its own. It can’t reach the window, magpie’s cookie or the window’s storage.</li>
       <li>Its policy allows its own files and nothing else: <code>connect-src 'none'</code>, so no <code>fetch</code>, WebSocket or beacon, and no forms or frames. Scripts must be files (<code>&lt;script src&gt;</code>), not inline. Inline styles and <code>data:</code> pictures are fine.</li>
+      <li>In a sandboxed frame, WebKit (Safari on iPhone and Mac, the Mac and Linux window) may match <code>'self'</code>, or a source without a scheme, to nothing: a <code>fetch</code> under <code>connect-src 'self'</code> is refused. A page your plugin’s service serves, which runs sandboxed too, should name whole sources (<code>https://…</code>) in its own policy. magpie adds the service’s address next to each <code>'self'</code> in a <code>Content-Security-Policy</code> header the service sends through <code>magpie web</code>, but not in a <code>&lt;meta&gt;</code> tag.</li>
       <li>magpie’s API refuses any request a frame like this one can make (<code>Origin: null</code>, a frame or another site’s request), so it is closed to the page even without the policy. Its files are served at <code>/_magpie/plugin/&lt;token&gt;/</code>, a token that changes each time magpie starts.</li>
       <li>A page can still send itself to another site, which then holds its frame. That is why reads give nothing secret. Treat what a page can read as public.</li>
       <li>An error the page doesn’t catch shows <span class="ui">This page stopped working</span> in its place, with <span class="ui">Try again</span>. Its own scripts’ errors reach it as “Script error.”, so look in the window’s console for the rest.</li>
@@ -1023,6 +1041,14 @@ document.getElementById(<span class="s">"calls"</span>).textContent = `${s.calls
     <a href="/docs/privacy">Privacy</a>
     <a href="/docs/masking">Privacy masking</a>
     <a href="/docs/mcp-router">MCP router</a>
+    <a href="/docs/library">Library</a>
+    <a href="/docs/claude-code-models">Models in Claude Code</a>
+    <a href="/docs/codex-models">Models in Codex</a>
+    <a href="/docs/gemini-cli-models">Models in Gemini CLI</a>
+    <a href="/docs/subscriptions">Subscriptions in any agent</a>
+    <a href="/docs/local-models">Local models</a>
+    <a href="/docs/opencode-models">Models in OpenCode</a>
+    <a href="/docs/alternatives">magpie vs CC Switch vs CCR</a>
     <a href="/docs/import">Add to magpie</a>
     <a href="/docs/integrate">Integrate</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

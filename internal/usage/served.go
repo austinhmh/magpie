@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/sessions"
 )
 
 // Which model answered: a vendor may serve a request with another model
@@ -64,10 +65,30 @@ func bareModel(m string) string {
 // is the member another magpie's routing group sent it to (GroupRouted),
 // nor a vendor's own name for the deployment serving the model
 // (ServingName), nor the model a relay sold under a name of its own
-// (RelayRenamed).
+// (RelayRenamed), nor the model at a region's deployment (RegionTail).
 func Swapped(sent, served string) bool {
 	a, b := bareModel(sent), bareModel(served)
-	return a != "" && b != "" && squash(a) != squash(b) && a != "auto" && squash(bareModel(provider.EffortFamily(a))) != squash(b) && !GroupRouted(sent, served) && !ServingName(sent, served) && !RelayRenamed(sent, served) && !VendorAlias(sent, served)
+	return a != "" && b != "" && squash(a) != squash(b) && a != "auto" && squash(bareModel(provider.EffortFamily(a))) != squash(b) && !GroupRouted(sent, served) && !ServingName(sent, served) && !RelayRenamed(sent, served) && !VendorAlias(sent, served) && !RegionTail(sent, served)
+}
+
+// regionTail is a region a vendor's id names its deployment of a model
+// by: WorkBuddy AI lists DeepSeek V4.1 Flash as deepseek-v4.1-flash-sg,
+// its paid id for the Singapore deployment (the plugin's product config
+// names it paidId to the free deepseek-v4.1-flash, one window for both),
+// and answers under the model's own name.
+var regionTail = regexp.MustCompile(`[-_](?:sg|us|eu|cn|intl|global)$`)
+
+// RegionTail reports whether one of sent and served is the other with a
+// region after it: the same model at that region's deployment, not
+// another model swapped in (plugins#628, chansee97). A region in both,
+// or a name that differs besides it, is not this.
+func RegionTail(sent, served string) bool {
+	a, b := bareModel(sent), bareModel(served)
+	if a == "" || b == "" {
+		return false
+	}
+	ra, rb := regionTail.ReplaceAllString(a, ""), regionTail.ReplaceAllString(b, "")
+	return (ra != a) != (rb != b) && ra != "" && squash(ra) == squash(rb)
 }
 
 // vendorAlias is a vendor's own alias for one of its models, as the
@@ -250,15 +271,17 @@ var grokBuild = regexp.MustCompile(`^grok-[0-9][0-9.]*(-build)(?:-|$)`)
 
 // GeminiServing reports whether served is the name Google's backend gives
 // the deployment that serves the Gemini model sent: the model's own name
-// with "-n" after it. Antigravity answers every level of gemini-3.8-flash
-// (-low, -medium, -high) with modelVersion gemini-3.8-flash-n, an id no
-// request can ask for (404) and fetchAvailableModels never lists, so it is
-// that model, not another one swapped in (dumplings on Discord). It holds
-// for Gemini models only: gpt-5 answered as gpt-5-n is still a swap, as is
-// gemini-3.8-flash answered as gemini-3.8-flash-lite or gemini-3.7-flash-n.
+// with one letter after it (sessions.GeminiDeployment). Antigravity
+// answers every level of gemini-3.8-flash (-low, -medium, -high) with
+// modelVersion gemini-3.8-flash-n, an id no request can ask for (404) and
+// fetchAvailableModels never lists, so it is that model, not another one
+// swapped in (dumplings on Discord); gemini-4-argon's is gemini-4-argon-d
+// (oioio on Discord). It holds for Gemini models only: gpt-5 answered as
+// gpt-5-n is still a swap, as is gemini-3.8-flash answered as
+// gemini-3.8-flash-lite or gemini-3.7-flash-n.
 func GeminiServing(sent, served string) bool {
 	a := squash(bareModel(provider.EffortFamily(bareModel(sent))))
-	b, ok := strings.CutSuffix(bareModel(served), "-n")
+	b, ok := sessions.GeminiDeployment(bareModel(served))
 	return ok && strings.HasPrefix(a, "gemini") && squash(b) == a
 }
 

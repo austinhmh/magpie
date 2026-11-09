@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/testenv"
 )
@@ -36,6 +37,8 @@ func sample(t reflect.Type, key string, was reflect.Value) reflect.Value {
 		switch key {
 		case "vision", "imageGen", "searcher", "searcherThen":
 			s = "off" // a model is checked against the catalog
+		case "videoGen":
+			s = "studio/clip-1" // a video model, videoModel's
 		}
 		for _, c := range Choices[key] {
 			if c != was.String() {
@@ -78,6 +81,8 @@ func sample(t reflect.Type, key string, was reflect.Value) reflect.Value {
 // fails here, and so `magpie settings` can't fall behind the window
 // (#4745).
 func TestKeysAreWhatTheSaveWrites(t *testing.T) {
+	home(t)
+	videoModel(t)
 	cur := settings.Defaults()
 	curJSON, err := json.Marshal(cur)
 	if err != nil {
@@ -124,6 +129,46 @@ func TestKeysAreWhatTheSaveWrites(t *testing.T) {
 	}
 	if len(Keys) != len(slices.Compact(slices.Sorted(slices.Values(Keys)))) {
 		t.Error("Keys names a key twice")
+	}
+}
+
+// videoModel sets up a provider whose clip-1 the user marked a video
+// model (#1399), so studio/clip-1 is one videoGen can name.
+func videoModel(t *testing.T) {
+	t.Helper()
+	if err := provider.Save(provider.Provider{ID: "studio", Name: "Studio", Chat: "https://studio.example/v1", Key: "sk-studio", Models: []string{"chat-1", "clip-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.SetModelKind("studio/clip-1", provider.KindVideo); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Settings › Images' video model: a model that makes videos is saved, one
+// that doesn't (a chat model, or none such) is refused, and a save from
+// another row, which doesn't send it, keeps it.
+func TestVideoGenCheckedAndKept(t *testing.T) {
+	home(t)
+	videoModel(t)
+	for _, bad := range []string{"studio/chat-1", "studio/nope", "clip-1"} {
+		if _, _, err := Apply([]byte(`{"videoGen":"`+bad+`"}`), false); err == nil {
+			t.Errorf("%s was taken as a video model", bad)
+		}
+	}
+	if _, _, err := Apply([]byte(`{"videoGen":"studio/clip-1"}`), false); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Apply([]byte(`{"theme":"dark"}`), false); err != nil {
+		t.Fatal(err)
+	}
+	if got := settings.Load().VideoGen; got != "studio/clip-1" {
+		t.Fatalf("videoGen %q after another row's save", got)
+	}
+	if _, _, err := Apply([]byte(`{"videoGen":""}`), false); err != nil {
+		t.Fatal(err)
+	}
+	if got := settings.Load().VideoGen; got != "" {
+		t.Fatalf("Automatic left videoGen %q", got)
 	}
 }
 
@@ -212,4 +257,83 @@ func TestRefusedValueWritesNothing(t *testing.T) {
 	if _, err := Body(settings.Load(), "port", json.RawMessage(`1`)); err == nil {
 		t.Error("Body took port, which has a route of its own")
 	}
+}
+
+// "Don't ask again" on the Quit question (zhujiu on Discord) holds across
+// a save from a page that doesn't send quitNoAsk (the tray panel, or a
+// page from before it), and Settings › General's Ask before quitting
+// sending it false turns the question back on.
+func TestQuitNoAskKeptUnlessSent(t *testing.T) {
+	cur := settings.Defaults()
+	cur.QuitNoAsk = true
+	in, err := Merge([]byte(`{"theme":"dark"}`), cur, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !in.QuitNoAsk {
+		t.Error("a save that didn't send quitNoAsk turned the Quit question back on")
+	}
+	in, err = Merge([]byte(`{"theme":"dark","quitNoAsk":false}`), cur, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.QuitNoAsk {
+		t.Error("quitNoAsk sent false left the Quit question off")
+	}
+}
+
+// What a reply's model name says is replyModel (ZoeCats on Discord). The
+// page sends it; a page from before it sends memberModel, which changes
+// it only when that page's switch was moved, so its save keeps a vendor
+// name it can't show; and `magpie settings reset replyModel` (Body over
+// a file with memberModel written beside it) is the model asked for.
+func TestReplyModelSaves(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		cur  string // replyModel saved now
+		body string
+		want string // replyModel saved, "" the model asked for
+	}{
+		{"page picks vendor", settings.ReplyMember, `{"replyModel":"vendor","memberModel":true}`, settings.ReplyVendor},
+		{"page picks asked", settings.ReplyMember, `{"replyModel":""}`, ""},
+		{"page picks member", "", `{"replyModel":"member"}`, settings.ReplyMember},
+		{"old page, vendor kept", settings.ReplyVendor, `{"memberModel":false}`, settings.ReplyVendor},
+		{"old page turns it on", settings.ReplyVendor, `{"memberModel":true}`, settings.ReplyMember},
+		{"old page turns it off", settings.ReplyMember, `{"memberModel":false}`, ""},
+		{"old page, member kept", settings.ReplyMember, `{"memberModel":true}`, settings.ReplyMember},
+		{"another page's save", settings.ReplyVendor, `{"theme":"dark"}`, settings.ReplyVendor},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			home(t)
+			if err := settings.Save(settings.Settings{ReplyModel: c.cur}); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := Apply([]byte(c.body), false); err != nil {
+				t.Fatal(err)
+			}
+			if got := settings.Load().ReplyModel; got != c.want {
+				t.Errorf("replyModel %q, want %q", got, c.want)
+			}
+		})
+	}
+	t.Run("reset", func(t *testing.T) {
+		home(t)
+		if err := settings.Save(settings.Settings{ReplyModel: settings.ReplyMember}); err != nil {
+			t.Fatal(err)
+		}
+		cur := settings.Load()
+		if !cur.MemberModel {
+			t.Fatal("memberModel isn't written beside replyModel member")
+		}
+		body, err := Body(cur, "replyModel", json.RawMessage(`""`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := Apply(body, false); err != nil {
+			t.Fatal(err)
+		}
+		if got := settings.Load().ReplyModel; got != "" {
+			t.Errorf("reset left replyModel %q", got)
+		}
+	})
 }

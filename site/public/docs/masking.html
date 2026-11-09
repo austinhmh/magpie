@@ -30,7 +30,10 @@
 <link rel="alternate" hreflang="en" href="https://usemagpie.ai/docs/masking">
 <link rel="alternate" hreflang="zh" href="https://usemagpie.ai/docs/zh/masking">
 <link rel="alternate" hreflang="ja" href="https://usemagpie.ai/docs/ja/masking">
+<link rel="alternate" hreflang="x-default" href="https://usemagpie.ai/docs/masking">
+<link rel="canonical" href="https://usemagpie.ai/docs/masking">
 <link rel="stylesheet" href="/docs.css">
+<meta property="og:site_name" content="magpie">
 <meta property="og:title" content="Privacy masking">
 <meta property="og:description" content="Keep keys, passwords and personal data on your computer: masked before a request leaves it, restored in the reply.">
 <meta property="og:image" content="https://usemagpie.ai/img/og.png">
@@ -51,6 +54,14 @@
     <a class="toc-only" href="/docs/privacy">Privacy</a>
     <a class="toc-only" href="/docs/masking">Privacy masking</a>
     <a class="toc-only" href="/docs/mcp-router">MCP router</a>
+    <a class="toc-only" href="/docs/library">Library</a>
+    <a class="toc-only" href="/docs/claude-code-models">Models in Claude Code</a>
+    <a class="toc-only" href="/docs/codex-models">Models in Codex</a>
+    <a class="toc-only" href="/docs/gemini-cli-models">Models in Gemini CLI</a>
+    <a class="toc-only" href="/docs/subscriptions">Subscriptions in any agent</a>
+    <a class="toc-only" href="/docs/local-models">Local models</a>
+    <a class="toc-only" href="/docs/opencode-models">Models in OpenCode</a>
+    <a class="toc-only" href="/docs/alternatives">magpie vs CC Switch vs CCR</a>
     <a href="/docs/import">Add to magpie</a>
     <a href="/docs/integrate">Integrate</a>
     <a href="https://github.com/yetone/magpie-releases/releases">Releases</a>
@@ -93,7 +104,7 @@
       <li><b>Open the page</b>Go to <span class="ui">Settings</span> → <span class="ui">Privacy</span>.</li>
       <li><b>Mask secrets</b>Under <span class="ui">What to mask</span>, set <span class="ui">Mask secrets</span> to <span class="ui">On</span>: API keys, private keys, tokens and passwords.</li>
       <li><b>Personal data, if you want it</b>Set <span class="ui">Mask personal data</span> to <span class="ui">On</span> for emails, phone numbers, ID and bank card numbers. Each further kind of personal data then gets its own switch below it.</li>
-      <li><b>Your own words</b>In <span class="ui">Masked words</span>, list names, codenames or hosts to keep from vendors, separated by commas. <span class="ui">Masked words in any case</span> makes <em>Nightjar</em> mask <em>NIGHTJAR</em> too. A secret magpie doesn’t know, such as your gateway’s own keys, goes under <span class="ui">Masking rules</span>: what it starts with, or a regular expression.</li>
+      <li><b>Your own words</b>In <span class="ui">Masked words</span>, list names, codenames or hosts to keep from vendors, one on each row (several pasted with commas between become a row each). <span class="ui">Masked words in any case</span> makes <em>Nightjar</em> mask <em>NIGHTJAR</em> too. A secret magpie doesn’t know, such as your gateway’s own keys, goes under <span class="ui">Masking rules</span>: what it starts with, or a regular expression.</li>
       <li><b>Try it</b>Paste a text into <span class="ui">Try it</span> to see exactly what the vendor would get. What you paste there isn’t kept.</li>
     </ol>
     <p>It applies from the next request, with no restart and nothing to change in your agent. The work is done by the built-in plugin <span class="ui">Privacy masking</span> (<code>redact</code>, in <span class="ui">Settings</span> → <span class="ui">Plugins</span>), which is on whenever any masking is asked for.</p>
@@ -174,6 +185,14 @@
     <a href="/docs/privacy">Privacy</a>
     <a href="/docs/masking">Privacy masking</a>
     <a href="/docs/mcp-router">MCP router</a>
+    <a href="/docs/library">Library</a>
+    <a href="/docs/claude-code-models">Models in Claude Code</a>
+    <a href="/docs/codex-models">Models in Codex</a>
+    <a href="/docs/gemini-cli-models">Models in Gemini CLI</a>
+    <a href="/docs/subscriptions">Subscriptions in any agent</a>
+    <a href="/docs/local-models">Local models</a>
+    <a href="/docs/opencode-models">Models in OpenCode</a>
+    <a href="/docs/alternatives">magpie vs CC Switch vs CCR</a>
     <a href="/docs/import">Add to magpie</a>
     <a href="/docs/integrate">Integrate</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

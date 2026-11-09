@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -75,6 +76,51 @@ func TestClaudeTUISafeguardsInEnv(t *testing.T) {
 	}
 	if !seen {
 		t.Fatalf("no run has the changed safeguards: %v", runs)
+	}
+}
+
+// Claude Code's auto-mode context changes on nearly every request in parts
+// of its own: the tool ids of the turns before, git's status, the
+// system-reminder ids. A turn whose safeguards differ only there goes on in
+// the interactive run; restarting for them began a new run for every turn
+// and tool round, each writing the whole conversation to the cache again,
+// and one message spent a Pro account's 5-hour window (xybio). A change to
+// what the user allows (the rules here) still starts a new run.
+func TestClaudeTUISafeguardsVaryingPartsKeepTheRun(t *testing.T) {
+	h := tuiScriptHarness(t, `echo "extra ${CLAUDE_CODE_EXTRA_BODY-unset}" >> $log`)
+	varied := func(n int, deny string) string {
+		g := strings.Replace(reviewAsked, `"toolu_01Capture001"`, fmt.Sprintf(`"toolu_01Capture%03d"`, n), 1)
+		g = strings.Replace(g, `"error":"not_a_repo"}`, fmt.Sprintf(`"error":null,"status":{"clean":false,"counts":{"modified":%d},"porcelain":" M f%d.go","truncated":false},"visibility":null,"truncated":false}`, n, n), 1)
+		g = strings.Replace(g, `"prior_turn_context":[`, fmt.Sprintf(`"system_reminders":[{"id":"r%d"}],"shed":[],"prior_turn_context":[`, n), 1)
+		g = strings.Replace(g, `"deny":[]`, `"deny":[`+deny+`]`, 1)
+		return `"safeguards":` + g + `,`
+	}
+	said := []string{"a1"}
+	for n := 1; n <= 4; n++ {
+		h.extra = varied(n, "")
+		h.ask("rules", said...)
+		said = append(said, fmt.Sprintf("a%d", n+1))
+	}
+	if runs := h.runs(); len(runs) != 1 {
+		t.Fatalf("4 turns whose safeguards differ only in Claude Code's varying parts started %d runs, want 1", len(runs))
+	}
+	h.extra = varied(5, `"Bash(rm:*)"`)
+	h.ask("rules", said...)
+	runs := h.runs()
+	if len(runs) != 2 {
+		t.Fatalf("a changed rule went on in %d runs, want a second", len(runs))
+	}
+	seen := false
+	for _, log := range runs {
+		if strings.Contains(log, `Bash(rm:*)`) {
+			seen = true
+			if !strings.Contains(log, "--resume ") {
+				t.Fatalf("the new run wasn't given the whole conversation: %s", log)
+			}
+		}
+	}
+	if !seen {
+		t.Fatalf("no run has the changed rule: %v", runs)
 	}
 }
 
@@ -156,5 +202,71 @@ func TestClaudeTUIImageByURL(t *testing.T) {
 	}
 	if n := len(h.runs()); n != 1 {
 		t.Fatalf("a request whose image couldn't be had ran: %d runs", n)
+	}
+}
+
+// Claude Code's auto mode classifier is asked afresh each call with the
+// transcript so far, its marks moving on with it. Pasted into the
+// interactive mode, which places no mark of the client's, each call read
+// only Claude Code's own prompt and wrote the whole transcript again
+// (#5585, #5655). With a transcript longer than marksPrintAt it runs as
+// claude -p, which keeps the marks: Claude Code's own caching is off and
+// the run is told the client's cache_control, Desktop's header-less
+// classifier and an opted-in client alike. A short one stays interactive.
+func TestClaudeTUIClassifierKeepsLongMarksAsPrint(t *testing.T) {
+	long := strings.Repeat(`earlier transcript entry\n`, 20000)
+	ask := func(h *resumeHarness, grown bool, short bool, header string) {
+		t.Helper()
+		body := classifierBody(t, grown)
+		if short {
+			body = bytes.Replace(body, []byte(long), []byte(strings.Repeat(`earlier transcript entry\n`, 100)), 1)
+		}
+		r := httptest.NewRequest("POST", "/v1/messages", bytes.NewReader(body))
+		if header != "" {
+			r.Header.Set("X-Magpie-Cache-Marks", header)
+		}
+		w := httptest.NewRecorder()
+		if code, msg := h.s.serveClaudeSubscription(w, r, provider.Anthropic, h.p, "claude-sonnet-5", body, &Usage{}); code != 200 {
+			t.Fatalf("%d %s", code, msg)
+		}
+	}
+	for _, header := range []string{"", "client"} {
+		t.Run("header="+header, func(t *testing.T) {
+			h := tuiScriptHarness(t, `echo "cache-disabled ${DISABLE_PROMPT_CACHING-unset}" >> $log`)
+			if !bytes.Contains(classifierBody(t, false), []byte(long)) {
+				t.Fatal("fixture: the transcript isn't where the test shortens it")
+			}
+			ask(h, false, false, header)
+			ask(h, true, false, header)
+			runs := h.runs()
+			if len(runs) != 2 {
+				t.Fatalf("%d runs, want one a call", len(runs))
+			}
+			for _, log := range runs {
+				if !strings.Contains(log, "cache-disabled 1") || !strings.Contains(log, `"cache_control"`) {
+					t.Fatalf("a long classifier's marks weren't kept by a -p run: %.400s", log)
+				}
+			}
+			if last := ClaudeModeNow().Last; last == nil || last.TUI || last.Why != cacheMarksCode {
+				t.Fatalf("the last run: %+v", last)
+			}
+			ask(h, false, true, header)
+			runs = h.runs()
+			if len(runs) != 3 {
+				t.Fatalf("%d runs after a short classifier", len(runs))
+			}
+			short := 0
+			for _, log := range runs {
+				if strings.Contains(log, "cache-disabled unset") {
+					short++
+				}
+			}
+			if short != 1 {
+				t.Fatalf("a short classifier left the interactive mode: %d interactive runs", short)
+			}
+			if last := ClaudeModeNow().Last; last == nil || !last.TUI {
+				t.Fatalf("the short classifier's run: %+v", last)
+			}
+		})
 	}
 }

@@ -155,6 +155,14 @@ func foldRefs(f file, s *settings.Settings) map[string][]string {
 		for m, w := range g.Weights {
 			note(at+"weight"+strconv.Itoa(w), m)
 		}
+		for m, to := range g.EffortMaps {
+			pairs := make([]string, 0, len(to))
+			for from, l := range to {
+				pairs = append(pairs, from+">"+l)
+			}
+			slices.Sort(pairs)
+			note(at+"effortmap"+strings.Join(pairs, ","), m)
+		}
 		if g.Pick != "" {
 			note(at+"pick", g.Pick)
 		}
@@ -343,8 +351,10 @@ func foldWhere(candidates func([]Provider) [][]int) (int, error) {
 		}
 		g.Fast = compact(mapEach(g.Fast, ref))
 		g.Placed = compact(mapEach(g.Placed, ref))
+		g.Seen = compact(mapEach(g.Seen, ref))
 		g.Off = compact(mapEach(g.Off, ref))
 		g.Weights = renamedWeights(g.Weights, ref)
+		g.EffortMaps = renamedEffortMaps(g.EffortMaps, ref)
 		g.Classifier = ref(g.Classifier)
 		g.Pick = ref(g.Pick)
 	}

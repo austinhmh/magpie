@@ -162,6 +162,47 @@ func TestHubMCPListsAndRoutes(t *testing.T) {
 	}
 }
 
+// A tool name the agent listed before its server's list changed (Magpie
+// Browser's browser_tabs, now the browser tool's tabs action) or while
+// the server's list failed still goes to that server when it is switched
+// on for the agent, for the server to run or refuse; another agent's
+// server, or one no server's name starts, is still unknown.
+func TestHubMCPCallsAToolNoLongerListed(t *testing.T) {
+	fresh(t)
+	f := &fakeHub{on: true,
+		tools: map[string][]HubTool{
+			"claude": {{Server: "magpie-browser", Tool: "browser", Spec: hubSpec("browser")}},
+		},
+		servers: map[string][]HubServer{
+			"claude": {{Name: "magpie-browser"}, {Name: "my.fs"}},
+			"codex":  {{Name: "github"}},
+		},
+	}
+	withHub(t, f)
+	h := lanGuard(New().Handler())
+	for _, c := range []struct{ name, ran string }{
+		{"magpie-browser__browser_tabs", "ran magpie-browser browser_tabs"},
+		{"magpie-browser__browser", "ran magpie-browser browser"},
+		// listed nothing just now, and its name in the hub's characters
+		{"my-fs__read", "ran my.fs read"},
+	} {
+		m := readMCP(t, hubPost(h, "claude", here, toolsCall(c.name, `{"action":"tabs"}`)))
+		if m.Error != nil || m.Result.IsError || m.Result.Content[0].Text != c.ran {
+			t.Errorf("%s: %+v", c.name, m)
+		}
+	}
+	for _, c := range []struct{ agent, name string }{{"claude", "github__create_issue"}, {"claude", "magpie-browser__"}, {"codex", "magpie-browser__browser_tabs"}, {"claude", "nope__x"}} {
+		m := readMCP(t, hubPost(h, c.agent, here, toolsCall(c.name, `{}`)))
+		if m.Error == nil || m.Error.Code != -32602 || !strings.Contains(m.Error.Message, "unknown tool "+c.name) {
+			t.Errorf("%s's %s: %+v", c.agent, c.name, m)
+		}
+	}
+	want := `claude magpie-browser browser_tabs {"action":"tabs"}|claude magpie-browser browser {"action":"tabs"}|claude my.fs read {"action":"tabs"}`
+	if got := strings.Join(f.ran(), "|"); got != want {
+		t.Errorf("ran %q, want %q", got, want)
+	}
+}
+
 // HubMCPAll, the one address any other app is given, is the hub for agent
 // "": every server in the Library, with its own instructions and its own
 // word for a tool it doesn't have; an agent's path still lists only its own.
@@ -554,5 +595,81 @@ func TestHubMCPTellsCallersApart(t *testing.T) {
 	want := []string{"hub-claude-" + a, "hub-claude-" + b, "hub-claude-far", ""}
 	if !slices.Equal(got, want) {
 		t.Fatalf("callers %q, want %q", got, want)
+	}
+}
+
+// The router's one address is what a headless magpie gives remote MCP
+// clients (treeman_26897 on Discord: a server with no agents, the router
+// turned on for other computers' apps). From another computer it takes a
+// gateway key, as /v1 does, and nothing without one gets a tool run:
+// not while magpie isn't shared, not with no Origin, a null one, another
+// scheme's or a foreign site's, not under a rebound Host, and not through
+// a proxy on this computer.
+func TestHubMCPRemoteEntryNeedsKey(t *testing.T) {
+	fresh(t)
+	t.Setenv("MAGPIE_ADDR", "")
+	t.Setenv("MAGPIE_PUBLIC_URL", "")
+	t.Setenv("MAGPIE_TRUST_PROXY", "")
+	f := &fakeHub{on: true, tools: map[string][]HubTool{"": {{Server: "notes", Tool: "find", Spec: hubSpec("find")}}}}
+	withHub(t, f)
+	h := lanGuard(New().Handler())
+	call := toolsCall("notes__find", `{"q":"x"}`)
+	const there = "192.0.2.7:4000"
+	refused := func(what string, w *httptest.ResponseRecorder, want ...int) {
+		t.Helper()
+		for _, c := range want {
+			if w.Code == c {
+				return
+			}
+		}
+		t.Errorf("%s: %d %s, want %v", what, w.Code, w.Body, want)
+	}
+	refused("not shared", hubPostAt(h, HubMCPAll, there, call), http.StatusForbidden)
+	refused("not shared, a tools/list", hubPostAt(h, HubMCPAll, there, toolsList), http.StatusForbidden)
+	_, secrets := newCaller(t, "Remote client") // shares magpie
+	refused("no key, no Origin", hubPostAt(h, HubMCPAll, there, call), http.StatusUnauthorized)
+	refused("no key, a tools/list", hubPostAt(h, HubMCPAll, there, toolsList), http.StatusUnauthorized)
+	refused("a wrong key", hubPostAt(h, HubMCPAll, there, call, "Authorization", "Bearer sk-magpie-wrong"), http.StatusUnauthorized)
+	for _, origin := range []string{"null", "chrome-extension://abcdefghijklmnop", "file://", "moz-extension://1234", "https://evil.example", "http://192.0.2.7:3425"} {
+		hdr := []string{"Origin", origin, "Sec-Fetch-Site", "cross-site", "Sec-Fetch-Mode", "cors"}
+		refused("no key, Origin "+origin+" from there", hubPostAt(h, HubMCPAll, there, call, hdr...), http.StatusUnauthorized, http.StatusForbidden)
+		refused("Origin "+origin+" from here", hubPostAt(h, HubMCPAll, here, call, hdr...), http.StatusForbidden)
+	}
+	// a page whose own name was rebound to this computer: same-origin, so
+	// its Origin is the Host or (as a browser's own marks show) none at all.
+	// With none of a browser's marks it is an agent here calling by a name
+	// of its own, which lanGuard lets by, as /v1
+	for _, addr := range []string{here, there} {
+		for _, marks := range [][]string{
+			{"Origin", "http://rebind.attacker.example:3425", "Sec-Fetch-Site", "same-origin", "Sec-Fetch-Mode", "cors"},
+			{"Sec-Fetch-Site", "same-origin", "Sec-Fetch-Mode", "cors"},
+			{"User-Agent", "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Safari/605.1.15"},
+		} {
+			r := httptest.NewRequest(http.MethodPost, HubMCPAll, strings.NewReader(call))
+			r.RemoteAddr, r.Host = addr, "rebind.attacker.example:3425"
+			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("Accept", "application/json, text/event-stream")
+			for i := 0; i+1 < len(marks); i += 2 {
+				r.Header.Set(marks[i], marks[i+1])
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, r)
+			refused(fmt.Sprintf("a rebound Host from %s %v", addr, marks), rec, http.StatusUnauthorized, http.StatusForbidden)
+		}
+	}
+	// a proxy or tunnel on this computer passing another's request on
+	refused("through a proxy here, no key", hubPostAt(h, HubMCPAll, here, call, "X-Forwarded-For", "203.0.113.9"), http.StatusUnauthorized, http.StatusForbidden)
+	refused("through a tunnel here, no key", hubPostAt(h, HubMCPAll, here, call, "Cf-Connecting-IP", "203.0.113.9"), http.StatusUnauthorized, http.StatusForbidden)
+	if got := f.ran(); len(got) != 0 {
+		t.Fatalf("ran for a request turned away: %q", got)
+	}
+	// with its key: the tool runs, from there and through the proxy
+	m := readMCP(t, hubPostAt(h, HubMCPAll, there, call, "Authorization", "Bearer "+secrets[0]))
+	if m.Result.IsError || m.Result.Content[0].Text != "ran notes find" {
+		t.Fatalf("with its key: %+v", m)
+	}
+	m = readMCP(t, hubPostAt(h, HubMCPAll, here, call, "X-Forwarded-For", "203.0.113.9", "Authorization", "Bearer "+secrets[0]))
+	if m.Result.IsError || len(f.ran()) != 2 {
+		t.Fatalf("through a proxy, with its key: %+v, ran %q", m, f.ran())
 	}
 }

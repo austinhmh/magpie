@@ -30,7 +30,10 @@
 <link rel="alternate" hreflang="en" href="https://usemagpie.ai/docs/plugins">
 <link rel="alternate" hreflang="zh" href="https://usemagpie.ai/docs/zh/plugins">
 <link rel="alternate" hreflang="ja" href="https://usemagpie.ai/docs/ja/plugins">
+<link rel="alternate" hreflang="x-default" href="https://usemagpie.ai/docs/plugins">
+<link rel="canonical" href="https://usemagpie.ai/docs/zh/plugins">
 <link rel="stylesheet" href="/docs.css">
+<meta property="og:site_name" content="magpie">
 <meta property="og:title" content="插件开发">
 <meta property="og:description" content="用一个 OpenCode 插件或 pi 扩展包，把任何服务变成 magpie 的供应商。">
 <meta property="og:image" content="https://usemagpie.ai/img/og.png">
@@ -51,6 +54,14 @@
     <a class="toc-only" href="/docs/zh/privacy">隐私</a>
     <a class="toc-only" href="/docs/zh/masking">本地脱敏</a>
     <a class="toc-only" href="/docs/zh/mcp-router">MCP 路由</a>
+    <a class="toc-only" href="/docs/zh/library">资源库</a>
+    <a class="toc-only" href="/docs/zh/claude-code-models">Claude Code 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/codex-models">Codex 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/gemini-cli-models">Gemini CLI 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/subscriptions">订阅用于任意 Agent</a>
+    <a class="toc-only" href="/docs/zh/local-models">本地模型</a>
+    <a class="toc-only" href="/docs/zh/opencode-models">OpenCode 接入其他模型</a>
+    <a class="toc-only" href="/docs/zh/alternatives">与 CC Switch、CCR 对比</a>
     <a href="/docs/zh/import">Add to magpie</a>
     <a href="/docs/zh/integrate">接入应用</a>
     <a href="https://github.com/yetone/magpie-releases/releases">版本发布</a>
@@ -265,7 +276,8 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
     <div class="table-wrap"><table>
       <tr><th>字段</th><th>含义</th></tr>
       <tr><td><code>magpie.icon</code></td><td>插件自己的图标，用在「发现」里的卡片（从 npm 读取，GitHub 上的插件从仓库读取）和「已安装」里的那一行；没有自己图标的供应商也用它：<code>https://</code> 地址或 <code>data:image/…</code> URI，最大 1 MB，SVG、PNG 等都行。</td></tr>
-      <tr><td><code>magpie.name</code></td><td>插件在「已安装」里那一行的名字；它的页面没写标题时，也是侧边栏标签的名字。只对社区列表没收录的插件有效（列表里的名字优先）。npm 包名只能是 ASCII，所以「华为云 HUAWEI」这样的名字写在这里。一行，最多 80 字节，否则忽略。它只是包自己的说法：不会显示为已审核，也不会用来按名字查找插件。</td></tr>
+      <tr><td><code>magpie.name</code></td><td>插件在「已安装」里那一行的名字；它的页面没写标题时，也是侧边栏标签的名字。只对社区列表没收录的插件有效（列表里的名字优先）。npm 包名只能是 ASCII，所以「华为云 HUAWEI」这样的名字写在这里。一行，最多 80 字节，否则忽略。它只是包自己的说法：不会显示为已审核，也不会用来按名字查找插件。打了 <code>magpie-plugin</code> 标签的仓库，在「发现 → 非官方插件 · GitHub」的卡片上也用它代替仓库名。</td></tr>
+      <tr><td><code>magpie.summary</code></td><td>「发现 → 非官方插件 · GitHub」卡片上的那行简介，按语言写：<code>{ "en": "…", "zh": "…" }</code>。按窗口语言显示（繁体中文读 <code>zh</code>），没有就用英文，再没有就用 GitHub 的仓库描述。每种语言一行，最多 300 字节，否则忽略。卡片上的名字或简介来自包自己时，会标「包自己的话」：没有人审阅过。</td></tr>
       <tr><td><code>magpie.maxConcurrency</code></td><td>每个账号同时接多少个请求，1 到 1000 的整数。用户在供应商上设置的上限优先。</td></tr>
     </table></div>
     <p>同样的字段也可以写在 <code>auth</code> 钩子上（<code>auth.icon</code>、<code>auth.maxConcurrency</code>），优先于 <code>package.json</code>。一个插件登录多个供应商时，可以给每个供应商各写一个 <code>auth.icon</code>，<code>magpie.icon</code> 留给插件本身。</p>
@@ -408,6 +420,8 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
       <li>带 <code>key</code> 的成功结果保存为 API key。</li>
       <li>结果里写 <code>provider: "other-id"</code>，登录就保存到插件负责的另一个供应商下。</li>
       <li>失败结果里的 <code>error</code> 是 magpie 自己的字段：用户会看到原因（最多 500 字符）。不写的话，用户只能看到登录失败。</li>
+      <li><code>authorize</code> 无法开始登录时，可以抛出错误，或者返回不带 <code>callback</code> 的 <code>{type: "failed", error}</code>：用户会看到这条原因。</li>
+      <li>用户取消或超时的登录就此结束：之后 <code>callback</code> 返回什么都会被丢弃，它为这次登录发出的请求也会失败。magpie 还会把这次登录的 <code>AbortSignal</code> 传进去：<code>callback(code, { signal })</code>（以及 <code>authorize(inputs, { signal })</code>），等得久的 callback 可以在它中止时停下。</li>
       <li>只有带 <code>prompts</code> 的方式才会收到 <code>inputs</code>。没有 prompts 的方式收到 <code>undefined</code>，和 OpenCode 的 TUI 一样。OpenCode 的 CLI 传的是空对象，有些插件因此会在终端里自己提问。</li>
     </ul>
     <h3>登录前的提问</h3>
@@ -659,7 +673,7 @@ m plugin logout acme</pre>
   <span class="s">"providers"</span>: [<span class="s">"acme"</span>],
   <span class="s">"summary"</span>: { <span class="s">"en"</span>: <span class="s">"Your Acme Coding Plan."</span>, <span class="s">"zh"</span>: <span class="s">"使用你的 Acme Coding Plan。"</span> } }</pre>
         </div>
-        中间件的条目写 <code>"kind": "middleware"</code>，不写 <code>providers</code>，列在<span class="ui">网关中间件</span>下。其他类型也一样：<code>"kind": "tools"</code> 列在<span class="ui">给 Agent 的工具</span>下，<code>"kind": "page"</code> 列在<span class="ui">页面</span>下，<code>"kind": "agent"</code> 列在 <span class="ui">Agent</span> 下。<code>MAGPIE_PLUGIN_MARKET=&lt;url&gt;</code> 让 magpie 改用另一份列表，可以用来检查你的条目；设为 <code>off</code> 则只用内置副本。</li>
+        中间件的条目写 <code>"kind": "middleware"</code>，不写 <code>providers</code>，列在<span class="ui">网关中间件</span>下。其他类型也一样：<code>"kind": "tools"</code> 列在<span class="ui">给 Agent 的工具</span>下，<code>"kind": "page"</code> 列在<span class="ui">页面</span>下，<code>"kind": "agent"</code> 列在 <span class="ui">Agent</span> 下。这些分组里是社区自己的包，条目写着 <code>"community": true</code>。从你自己的仓库发布的包不写这一项：它不在这些分组里，<span class="ui">插件</span>页的搜索按名字、简介或发布者能找到它，卡片显示它在 npm 上的发布者，不带 magpie 社区标记。<code>MAGPIE_PLUGIN_MARKET=&lt;url&gt;</code> 让 magpie 改用另一份列表，可以用来检查你的条目；设为 <code>off</code> 则只用内置副本。</li>
       <li><b>GitHub 标签。</b>在 GitHub 上打了 <code>magpie-plugin</code> topic 的仓库，会显示在 <span class="ui">插件 → 发现 → 非官方插件 · GitHub</span> 里，Star 多的在前，并标明没有人审阅过。<code>package.json</code> 要放在仓库根目录。发布到 npm 且 <code>repository</code> 指向这个仓库的，从 npm 安装；否则按仓库当前的代码安装，所以它加载的文件必须提交进仓库：<code>dist</code> 只在发布时才构建的仓库不会显示。fork、已归档的仓库和 magpie-community 自己的仓库也不显示。magpie 最多每十分钟问一次 GitHub，仓库打上标签后几分钟内就会出现。卡片显示 <code>package.json</code> 里 <code>"magpie": { "icon": "…" }</code> 给的图标，没有就显示拼图图标。许可证取 GitHub 从仓库 <code>LICENSE</code> 文件识别出的那个；GitHub 认不出是哪种许可证（显示 <code>NOASSERTION</code>，比如 MIT 正文多加了一行）或者没有这个文件时，卡片显示 <code>package.json</code> 的 <code>license</code>。从 npm 安装的插件显示 <code>package.json</code> 里的。</li>
       <li><b>社区包。</b>想把插件贡献到 <a href="https://github.com/magpie-community/plugins">magpie-community/plugins</a>：
         <ul>
@@ -804,6 +818,7 @@ claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/to
     <p>设置 → 插件里会按这些名字列出每个插件的工具，并能复制服务器地址。<code>args</code> 可以是 zod 字段表（<code>tool.schema</code> 就是 zod）、zod 对象或 JSON Schema 对象。智能体会看到它，magpie 在 <code>execute</code> 运行前按它检查调用的参数；参数不对时回一个写明是哪个参数的错误。<code>ctx</code> 与 OpenCode 的相同，<code>agent</code> 是发起调用的智能体。每个工具最多运行 55 秒，到时 <code>ctx.abort</code> 触发。</p>
     <p>这个服务器由内置插件 <span class="ui">插件工具</span> 提供。只要有已开启的插件提供工具，它就保持开启；关闭时不列出任何工具，调用会说明它已关闭。用网关密钥发起的调用计入该密钥的限额。工具和提供方插件一样，以你的权限在插件宿主里运行，结果只回给调用它的智能体。</p>
     <p>每个提供工具的插件也会在资料库的 MCP 页里成为一个独立的服务器，以插件的短名命名（如 <code>search1api</code>），不用再手动添加地址。开启 <a href="mcp-router.html">MCP 路由</a>时，它的工具会出现在每个接入路由的智能体里，名为 <code>search1api__search</code>；和资料库里其他服务器一样，可以按智能体开关，或单独关掉某个工具。删掉后，只有把插件移除再重新添加才会再出现。</p>
+    <p>想保留插件的供应商、却不把它的工具给任何智能体：在<span class="ui">插件</span> › <span class="ui">已安装</span>里，点它工具那一行的<span class="ui">对智能体隐藏</span>。之后它的服务器不会给任何智能体，也不会给连到路由地址的应用；插件更新、关了再开、重启都保持不变。点<span class="ui">交给智能体</span>，就还给原来那些智能体。</p>
 
     <h2 id="agents"><a class="anchor" href="#agents">Agent 插件</a></h2>
     <p>插件还可以添加一个 <em>Agent</em>：magpie 没有内置接入的那种。它说明这个 Agent 把模型写在哪里，以及还要写些什么才能让 Agent 走 magpie 的网关。这样它就和 magpie 内置的 Agent 一样出现在 <span class="ui">Agent</span> 页：在它那一行选一个 magpie 的模型，magpie 就把模型连同网关地址和这个 Agent 自己的 key 写进它的配置；关掉开关，一切恢复成用户原来的样子。下面的例子添加 <a href="https://aider.chat">Aider</a>。</p>
@@ -841,6 +856,7 @@ claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/to
       <tr><td><code>config</code></td><td>magpie 修改的文件。会展开 <code>~</code> 和 <code>$VAR</code>。文件不存在时会新建。</td></tr>
       <tr><td><code>format</code></td><td><code>json</code>、<code>yaml</code> 或 <code>env</code>，文件名看不出格式时才需要写（<code>.json</code>/<code>.jsonc</code>、<code>.yaml</code>/<code>.yml</code>、<code>.env</code>）。暂不支持 TOML。</td></tr>
       <tr><td><code>model</code></td><td>文件里模型的键，JSON 和 YAML 用点分路径（<code>llm.model</code>）。模型在 Agent 自己里面选（从 <code>connect</code> 写入的模型里挑，比如 Raycast）时不写它：这一行就只有连接开关、没有模型选择器，而 <code>connect</code>（这种插件必须有）调用时不带 <code>model</code>。</td></tr>
+      <tr><td><code>startup</code></td><td>Agent 把新会话起始的模型存在 <code>connect</code> 所写文件之外的另一个文件里时，用它代替 <code>model</code>：那个文件的 <code>config</code> 和 <code>format</code>，<code>model</code> 是其中模型的键，<code>keys</code> 是原样写在模型旁边的键。PiG 的 provider 在 <code>models.json</code>，默认模型在 <code>settings.json</code>：<code>startup: { config: "~/.pig/agent/settings.json", model: "defaultModel", keys: { defaultProvider: "magpie" } }</code>。这一行就能选模型，断开时两个文件都还原。v0.1.3008 之前的 magpie 把这样的插件当作没写 <code>model</code> 的插件。</td></tr>
       <tr><td><code>prefix</code></td><td>写在 magpie 模型 id 前面的内容：通过 LiteLLM 访问 OpenAI 兼容接口的 Agent 用 <code>openai/</code>。id 本身是网关接受的 <code>&lt;供应商&gt;/&lt;模型&gt;</code>。</td></tr>
       <tr><td><code>bin</code>、<code>dir</code></td><td><code>PATH</code> 上的命令和配置目录，用来判断 Agent 是否已安装。</td></tr>
       <tr><td><code>ua</code></td><td>Agent 的 User-Agent 里的词，请求没带它的 key 时，用来在用量里认出它。</td></tr>
@@ -858,6 +874,7 @@ claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/to
       <li><b>运行方式。</b>和<a href="#middleware">中间件</a>一样：在 magpie 自己的进程里用 moejs 运行，只能导入插件内的文件，没有 Node API，<code>console.log</code> 进 magpie 的日志。加载和 <code>connect</code> 各有一秒。模块加载失败或 <code>connect</code> 抛错的插件，会在插件页它那一行写明原因，并且什么都不写入。</li>
       <li><b>资源库。</b>写了 <code>library</code>，这个 Agent 就和内置 Agent 一样拿到资源库的内容：指令写在文件里 magpie 的两行标记之间，MCP 服务器和用户自己的写在同一个文件里（用户自己加的字段保留），技能以链接或副本放进文件夹。取消时只拿走 magpie 写的部分，文件原来的内容留在 magpie 的备份里。<code>mcpFormat</code> 不在列表中，或写了 <code>mcp</code> 却没写 <code>mcpFormat</code>，插件不会加载。</li>
       <li><b>声明方式。</b><code>package.json</code> 里写 <code>"magpie": { "agent": "./agent.js" }</code>，或者一个名为 <code>*.agent.js</code>（或 <code>.mjs</code>）的单文件。一个包可以同时是供应商、中间件和 Agent。插件市场里 Agent 条目写 <code>"kind": "agent"</code>，列在 <span class="ui">Agent</span> 下；社区包命名为 <code>@magpie-community/agent-&lt;name&gt;</code>。</li>
+      <li><b>需要运行时的 Agent。</b>Agent 文件仍是 moejs 模块，没有定时器，也不能导入插件以外的东西。Agent 需要更多（定时器、监视文件、把值同步进应用自己的配置）时，包可以再带一个 Bun 模块作为 <code>main</code>，像供应商插件的那样运行。它仍是 Agent 插件：声明了 <code>magpie.agent</code> 的包，不管有没有 <code>main</code>，都列在 <span class="ui">Agent</span> 下，GitHub 上的也一样；它在<span class="ui">已安装</span>里那一行带 Agent 标记，只有它的模块提供了供应商时才同时带供应商标记。</li>
     </ul>
 
     <h2 id="pages"><a class="anchor" href="#pages">窗口里的页面</a></h2>
@@ -909,6 +926,7 @@ document.getElementById(<span class="s">"calls"</span>).textContent = `${s.calls
     <ul>
       <li>页面运行在只允许脚本的沙盒框架里（<code>sandbox="allow-scripts"</code>，它的 <code>Content-Security-Policy</code> 里也一样），有自己独立的 origin。它碰不到窗口、magpie 的 cookie 和窗口的存储。</li>
       <li>它的策略只允许加载自己的文件：<code>connect-src 'none'</code>，所以没有 <code>fetch</code>、WebSocket 或 beacon，也没有表单和框架。脚本必须是文件（<code>&lt;script src&gt;</code>），不能内联；内联样式和 <code>data:</code> 图片可以。</li>
+      <li>在 sandbox 框架里，WebKit（iPhone 和 Mac 上的 Safari、Mac 和 Linux 的窗口）的 <code>'self'</code> 和不带 scheme 的源可能什么都匹配不上：<code>connect-src 'self'</code> 下的 <code>fetch</code> 会被拦下。插件服务提供的页面同样在 sandbox 里运行，它自己的策略应写完整的源（<code>https://…</code>）。服务经 <code>magpie web</code> 发出的 <code>Content-Security-Policy</code> 响应头里，magpie 会在每个 <code>'self'</code> 后面补上服务的地址，<code>&lt;meta&gt;</code> 标签里的不会。</li>
       <li>这种框架能发出的请求（<code>Origin: null</code>、框架请求、别的网站的请求），magpie 的 API 都会拒绝，所以就算没有策略，页面也进不了 API。它的文件从 <code>/_magpie/plugin/&lt;token&gt;/</code> 提供，token 每次 magpie 启动都会变。</li>
       <li>页面仍然可以把自己跳转到别的网站，那个网站就接管了它的框架。所以读取只给不机密的东西：把页面能读到的都当作公开的。</li>
       <li>页面没接住的错误会在它的位置显示<span class="ui">此页面已停止工作</span>和<span class="ui">重试</span>。它自己脚本的错误在页面里只显示为“Script error.”，详细内容看窗口的控制台。</li>
@@ -1023,6 +1041,14 @@ document.getElementById(<span class="s">"calls"</span>).textContent = `${s.calls
     <a href="/docs/zh/privacy">隐私</a>
     <a href="/docs/zh/masking">本地脱敏</a>
     <a href="/docs/zh/mcp-router">MCP 路由</a>
+    <a href="/docs/zh/library">资源库</a>
+    <a href="/docs/zh/claude-code-models">Claude Code 接入其他模型</a>
+    <a href="/docs/zh/codex-models">Codex 接入其他模型</a>
+    <a href="/docs/zh/gemini-cli-models">Gemini CLI 接入其他模型</a>
+    <a href="/docs/zh/subscriptions">订阅用于任意 Agent</a>
+    <a href="/docs/zh/local-models">本地模型</a>
+    <a href="/docs/zh/opencode-models">OpenCode 接入其他模型</a>
+    <a href="/docs/zh/alternatives">与 CC Switch、CCR 对比</a>
     <a href="/docs/zh/import">Add to magpie</a>
     <a href="/docs/zh/integrate">接入应用</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

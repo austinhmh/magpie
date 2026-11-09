@@ -116,3 +116,45 @@ test("windows keep their family and pool, apart by them", () => {
   ], now);
   assert.deepEqual(r.windows.map((w) => [w.pool, w.used]), [["Gemini", 20], ["Claude & GPT", 80]]);
 });
+
+// #4791 (hayden4608 on Discord, handong66): three accounts with 100% of 5
+// hours left and 0% of 7 days, one with 0% of 5 hours and 22% of 7 days.
+// The three can't spend their 5 hours before their week starts again: the
+// server marks those windows heldBy "7 days", and the strip read 75% of 5
+// hours left in all. Held, they count as used up: 0% left; the week's
+// figure is the mean as before, 5.5% left.
+test("a window held by a longer one used up counts as nothing left", () => {
+  const codex = (user, five, week, fiveHeld) => ({ provider: "codex", name: "Codex", user, plan: "plus", windows: [
+    { name: "5 hours", used: five, resetsAt: iso(now + 5 * H), ...(fiveHeld ? { heldBy: "7 days" } : {}) },
+    { name: "7 days", used: week, resetsAt: iso(now + 72 * H) },
+  ] });
+  const r = merge([codex("a", 0, 100, true), codex("b", 0, 100, true), codex("c", 0, 100, true), codex("d", 100, 78, false)], now);
+  const [five] = by(r, "5 hours"), [week] = by(r, "7 days");
+  assert.equal(five.used, 100, "no 5 hours to spend in all, not 75% left");
+  assert.equal(five.held, 3);
+  assert.equal(five.accounts, 4);
+  assert.equal(week.used, 94.5, "5.5% of the week left, as before");
+  assert.equal(week.held, 0);
+  // a counted window held so adds its whole as used
+  const c = merge([
+    acct("a", [{ name: "Credits", amount: 0, limit: 500, unit: "credits", heldBy: "Monthly" }]),
+    acct("b", [{ name: "Credits", amount: 100, limit: 500, unit: "credits" }]),
+  ], now);
+  assert.deepEqual(by(c, "Credits").map((w) => [w.amount, w.limit, w.held]), [[600, 1000, 1]]);
+});
+
+test("a Mistral Studio month never adds up with a Vibe month (dhanyqaz on Discord)", () => {
+  // the two keys of one Student organization, as magpie reads them: the
+  // Vibe key's vibe_budget and the Studio key's api_budget, both in USD
+  const mistral = (user, w) => ({ provider: "mistral", name: "Mistral", user, plan: "Student", windows: [w] });
+  const r = merge([
+    mistral("Vibe", { name: "Month", amount: 0.64, limit: 150, unit: "USD", used: 0.43 }),
+    mistral("Studio", { name: "API · Month", amount: 3, limit: 15, unit: "USD", used: 20 }),
+  ], now);
+  assert.deepEqual(r.windows, [], "no 'All 2 accounts' figure of 165 USD");
+  const two = merge([
+    mistral("Vibe", { name: "Month", amount: 0.64, limit: 150, unit: "USD", used: 0.43 }),
+    mistral("Vibe 2", { name: "Month", amount: 15, limit: 150, unit: "USD", used: 10 }),
+  ], now);
+  assert.equal(by(two, "Month")[0].limit, 300, "two Vibe months still add up");
+});

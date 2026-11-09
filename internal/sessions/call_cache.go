@@ -57,7 +57,16 @@ const callCacheVersion = "calls-v15"
 // for one agent read every agent's history again, every call shard of a
 // long history (~16,000 files, minutes of CPU) after an update. An agent
 // not named here is at 0, as every shard written before this was.
-var callParseVersions = map[string]int{}
+//
+// cindy 1: a call through magpie's link (provider "magpie-<8 hex>") is
+// the gateway's, and left out (cindyGatewayProvider).
+// codex 1, zcode 1: a fork's copies of its parent's calls are the
+// parent's (codex_fork.go, zcDB.copied).
+// codex 2, zcode 2: only the copies are; a fork's own calls are its own
+// (zcode 1 left out every call of a session holding one copy).
+// antigravity 1: a Gemini deployment's name with any one letter after it
+// (gemini-4-argon-d) is its model's (GeminiDeployment).
+var callParseVersions = map[string]int{"antigravity": 1, "cindy": 1, "codex": 3, "zcode": 2}
 
 // CallCacheVersion is callCacheVersion and callParseVersions, for a cache
 // of what is made of the calls (usage's requests-v1.bin and heatmap): a
@@ -201,6 +210,15 @@ func pruneCalls(files []file) {
 
 func keepCalls(path string, st *callFile) {
 	defer trimCallRevisions(time.Now())
+	if callRoot == "" {
+		// what is kept is of this root: a Sessions parse that read a
+		// rollout's calls along (callsRide) keeps them before any Requests
+		// read named the root, and pruneCalls then took the root for a
+		// moved one and dropped them, Codex window and all. The shard on
+		// disk has no window, so the next line read the rollout whole
+		// again (#4369: 10.8 MB for one line after a start).
+		callRoot = callCacheDir()
+	}
 	callCounts[path] = len(st.Calls)
 	delete(callCache, path)
 	order := callOrder[:0]
@@ -233,13 +251,15 @@ func keepCalls(path string, st *callFile) {
 // in callFiles needs an entry here, in lineCallReaders or in
 // resumeCallReaders, or its calls are never read.
 var wholeCallReaders = map[string]func(file) (*callFile, bool){
-	"opencode":  readOpenCodeCalls,
-	"zcode":     readZCodeCalls,
-	"workbuddy": readWorkBuddyCalls,
-	"codebuddy": readWorkBuddyCalls, // #1779
+	"opencode":     readOpenCodeCalls,
+	"zcode":        readZCodeCalls,
+	"workbuddy":    readWorkBuddyCalls,
+	"workbuddy-ai": readWorkBuddyCalls,
+	"codebuddy":    readWorkBuddyCalls, // #1779
 	// #1605
 	"minimax-code": readMiniMaxCalls,
-	"agy":          readAgyCalls, // #2097
+	"agy":          readAgyCalls,         // #2097
+	"antigravity":  readAntigravityCalls, // #2190
 }
 
 // resumeCallReaders read an agent's calls from a file only appended to that
@@ -275,6 +295,7 @@ var lineCallReaders = map[string]lineCallReader{
 	"raft":  {piCallsBegin, readPiCallLine, piCallsKept},
 	"cindy": {piCallsBegin, readPiCallLine, piCallsKept},
 	"omp":   {piCallsBegin, readPiCallLine, piCallsKept},
+	"grok":  {grokCallsBegin, grokCallLine, grokCallsKept}, // #4423
 }
 
 // callLock is the lock a file's calls are read under, so that two readers
@@ -422,14 +443,19 @@ type callsRide struct {
 	claude     bool
 }
 
-// callsAlong is a ride for f's calls when f is a packed Codex rollout whose
-// calls are to be read again, or a Claude session whose calls were never
-// read, and nil otherwise. It holds the file's calls lock until release, so
-// a readCalls of the file meanwhile waits for what the ride reads rather
-// than read it again.
-func callsAlong(f file) *callsRide {
+// callsAlong is a ride for f's calls when f is a Codex rollout whose calls
+// are to be read again, or a Claude session whose calls were never read,
+// and nil otherwise. A plain rollout rides only when both reads start at
+// its first line (parseWith lets the ride go otherwise): read alone, a
+// cold start read every rollout twice, 3.5 GB for 1.7 GB of them (#4369).
+// sum is the summary the parse goes on from: a plain rollout's with its
+// Codex window is read on, so its calls are left to readCalls unlooked.
+// It holds the file's calls lock until release, so a readCalls of the
+// file meanwhile waits for what the ride reads rather than read it again.
+func callsAlong(f file, sum *state) *callsRide {
 	claude := f.agent == "claude" || f.agent == "claude-desktop"
-	if !(f.agent == "codex" && packed(f.path)) && !claude || f.cold || wslCold(f.path) {
+	onward := !packed(f.path) && sum != nil && sum.Codex != nil
+	if f.agent != "codex" && !claude || f.agent == "codex" && onward || f.cold || wslCold(f.path) {
 		return nil
 	}
 	lock := callLock(f.path)
@@ -560,6 +586,11 @@ type callDiskState struct {
 	PiCwd               string
 	PiSince             time.Time
 	PiProvider, PiModel string
+	// Grok Build's carry (grokCallCarry), flat: GrokOn when there is one
+	GrokOn    bool
+	GrokSince time.Time
+	GrokModel string
+	GrokAsked string
 }
 
 func diskCallState(s *callFile) callDiskState {
@@ -571,6 +602,9 @@ func diskCallState(s *callFile) callDiskState {
 	}
 	if p := s.Pi; p != nil {
 		d.PiOn, d.PiHeader, d.PiCwd, d.PiSince, d.PiProvider, d.PiModel = true, p.Header, p.Cwd, p.Since, p.Provider, p.Model
+	}
+	if g := s.Grok; g != nil {
+		d.GrokOn, d.GrokSince, d.GrokModel, d.GrokAsked = true, g.Since, g.Model, g.Asked
 	}
 	return d
 }
@@ -586,6 +620,9 @@ func (s callDiskState) restore() *callFile {
 	}
 	if s.PiOn {
 		st.Pi = &piCarry{s.PiHeader, s.PiCwd, s.PiSince, s.PiProvider, s.PiModel}
+	}
+	if s.GrokOn {
+		st.Grok = &grokCallCarry{Since: s.GrokSince, Model: s.GrokModel, Asked: s.GrokAsked}
 	}
 	return st
 }
@@ -715,32 +752,90 @@ func loadKept(f file) *callFile {
 	return st
 }
 
+// framePatchBufs holds the patches writeCalls makes a frame of, for the
+// next frame and the next file's write: each frame grew its own up to
+// framePatches, ~1 GB of a first start's 21 GB history (#2278). A frame
+// holds no more than framePatches, so a kept one is at most ~1 MB.
+var framePatchBufs = sync.Pool{New: func() any { return new([]callPatch) }}
+
+// frameBytes holds one frame's bytes as writeCalls writes it, for the
+// next frame and the next write: a write was held whole before any of it
+// went to the file, grown by doublings to its size (~120 MB of a first
+// start's writes, and a 52k-call session held 8 MB at once), where one
+// frame is at most ~1 MB.
+var frameBytes = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
 func writeCalls(st *callFile, start int, appendOnly bool) {
 	state := diskCallState(st)
-	var data bytes.Buffer
+	dir := callCacheDir()
+	if os.MkdirAll(dir, 0700) != nil {
+		return
+	}
+	var out *os.File
+	var err error
+	if appendOnly {
+		out, err = os.OpenFile(callCachePath(st.Path), os.O_WRONLY|os.O_APPEND, 0600)
+	} else {
+		out, err = os.CreateTemp(dir, "calls-*.tmp")
+	}
+	if err != nil {
+		return
+	}
+	if !appendOnly {
+		defer os.Remove(out.Name())
+	}
+	data := frameBytes.Get().(*bytes.Buffer)
+	defer func() {
+		if data.Cap() <= 4<<20 {
+			data.Reset()
+			frameBytes.Put(data)
+		}
+	}()
 	var frame callFrame
 	var dict map[string]uint32
 	var header [8]byte
 	ok := true
-	// flush adds the frame to data, its header in front
+	// flush writes the frame to out, its header in front
 	flush := func(more bool) {
 		frame.More = more
-		at := data.Len()
+		data.Reset()
 		data.Write(header[:])
-		if gob.NewEncoder(&data).Encode(frame) != nil {
+		if gob.NewEncoder(data).Encode(frame) != nil {
 			ok = false
 			return
 		}
 		b := data.Bytes()
-		binary.LittleEndian.PutUint32(b[at:], uint32(len(b)-at-len(header)))
-		binary.LittleEndian.PutUint32(b[at+4:], crc32.ChecksumIEEE(b[at+len(header):]))
+		binary.LittleEndian.PutUint32(b, uint32(len(b)-len(header)))
+		binary.LittleEndian.PutUint32(b[4:], crc32.ChecksumIEEE(b[len(header):]))
+		if _, err := out.Write(b); err != nil {
+			ok = false
+		}
 	}
+	patches := framePatchBufs.Get().(*[]callPatch)
+	defer func() {
+		clear(frame.Patches[:cap(frame.Patches)]) // nothing of st is kept in the pool
+		*patches = frame.Patches[:0]
+		framePatchBufs.Put(patches)
+	}()
+	// room for the first frame's patches at once: the pool is empty after
+	// a collection, and append's doublings to framePatches were ~150 MB
+	// of a first start's writes
+	n := len(st.Calls) - start
+	for i := 0; i < start; i++ {
+		if st.dirty[i] {
+			n++
+		}
+	}
+	frame.Patches = slices.Grow((*patches)[:0], min(n, framePatches))
 	begin := func() {
-		frame = callFrame{State: state, Strings: []string{""}, Calls: len(st.Calls)}
+		frame = callFrame{State: state, Strings: []string{""}, Calls: len(st.Calls), Patches: frame.Patches[:0]}
 		dict = map[string]uint32{"": 0}
 	}
 	begin()
 	add := func(i int) {
+		if !ok {
+			return
+		}
 		if len(frame.Patches) == framePatches {
 			if flush(true); !ok {
 				return
@@ -769,31 +864,10 @@ func writeCalls(st *callFile, start int, appendOnly bool) {
 	for i := start; i < len(st.Calls); i++ {
 		add(i)
 	}
-	if flush(false); !ok {
-		return
+	if ok {
+		flush(false)
 	}
-	dir := callCacheDir()
-	if os.MkdirAll(dir, 0700) != nil {
-		return
-	}
-	var out *os.File
-	var err error
-	if appendOnly {
-		out, err = os.OpenFile(callCachePath(st.Path), os.O_WRONLY|os.O_APPEND, 0600)
-	} else {
-		out, err = os.CreateTemp(dir, "calls-*.tmp")
-	}
-	if err != nil {
-		return
-	}
-	if !appendOnly {
-		defer os.Remove(out.Name())
-	}
-	_, err = out.Write(data.Bytes())
-	if closeErr := out.Close(); err == nil {
-		err = closeErr
-	}
-	if err == nil && !appendOnly {
+	if closeErr := out.Close(); ok && closeErr == nil && !appendOnly {
 		_ = os.Rename(out.Name(), callCachePath(st.Path))
 	}
 }

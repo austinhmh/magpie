@@ -38,7 +38,7 @@ const groups = () => ({ models, pools: [], deciders: [], found: true, groups: [
   { id: "glm", name: "GLM", members: ["workbuddy-ai/glm-5"], ready: true, memberInfo: [{ id: "workbuddy-ai/glm-5", ready: true, provider: "workbuddy-ai", name: "WorkBuddy AI", icon: "generic", model: "glm-5" }] },
 ] });
 
-function serve(lang, theme, tray) {
+function serve(lang, theme, tray, cards = quotas) {
   const settings = { theme, lang, tray, quotaLeft: false, currency: "usd" };
   return async (route) => {
     const url = new URL(route.request().url());
@@ -48,7 +48,7 @@ function serve(lang, theme, tray) {
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings });
     if (url.pathname === "/api/settings") return json(settings);
     if (url.pathname === "/api/providers") return json({ providers: [], presets: [], excluded: [], gateway: { running: true, window: true, url: "http://127.0.0.1:3999" } });
-    if (url.pathname === "/api/usage/quotas") return json(quotas());
+    if (url.pathname === "/api/usage/quotas") return json(cards());
     if (url.pathname === "/api/groups") return json(groups());
     if (url.pathname === "/api/plugins") return json({ plugins: [] });
     if (url.pathname === "/api/gateway/trace") {
@@ -93,14 +93,14 @@ const shot = async (page, name) => {
   await page.screenshot({ path: path.join(process.env.SHOTS, name + ".png") });
 };
 
-async function open(browser, lang, theme, tray, url, width = 440, height = 900) {
+async function open(browser, lang, theme, tray, url, width = 440, height = 900, cards = quotas) {
   const context = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce", colorScheme: theme });
   const page = await context.newPage();
   page.setDefaultTimeout(8000);
   page.setDefaultNavigationTimeout(60000);
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.route("**/*", serve(lang, theme, tray));
+  await page.route("**/*", serve(lang, theme, tray, cards));
   await page.addInitScript(() => { try { if (!sessionStorage.getItem("set")) { localStorage.clear(); localStorage.setItem("magpie.quotaRange", "off"); sessionStorage.setItem("set", "1"); } } catch {} });
   await page.goto(url);
   return { page, errors };
@@ -152,7 +152,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator("#quotaMode .opt").nth(0).click();
 
         // a routing group's row
-        await page.goto("http://magpie.test/?view=routing");
+        await page.goto("http://magpie.test/?view=groups");
         const line = page.locator('.rt-groups > .rt-group[data-id="glm"] .rt-gquota');
         await line.waitFor();
         const said = await line.textContent();
@@ -185,5 +185,69 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.deepEqual(panel.errors, []);
       });
     }
+  }
+}
+
+// #4791 (hayden4608 on Discord, handong66): three Codex accounts with 100%
+// of 5 hours left and 0% of 7 days, one with 0% of 5 hours and 22% of 7
+// days. The server marks the three's 5 hours held by their week
+// (provider.WithHeldWindows): they can't be spent before it starts again.
+// The strip read 75% of 5 hours left; it says 0% left, its tooltip says
+// three are held, and the week is 5.5% left as before. Each account's own
+// card still shows the vendor's 100% left.
+const heldWords = {
+  en: { held: "3 of them can't spend theirs before a longer window used up starts again: counted as none left", five: "0% left", week: "5.5% left" },
+  zh: { held: "其中 3 个账号的更长周期已用完、重置前用不上这部分额度，按无剩余计" },
+  "zh-TW": { held: "其中 3 個帳號的更長週期已用完、重設前用不上這部分額度，按無剩餘計" },
+  ja: { held: "うち 3 件は、より長い枠を使い切っており、そのリセットまで使えないため残りなしとして計上" },
+  de: { held: "3 davon können ihren Rest erst nach dem Neustart eines aufgebrauchten längeren Fensters nutzen: als leer gezählt" },
+};
+const pct = (s) => Number(/([\d.]+)%/.exec(s)?.[1]);
+const heldCards = () => [["a", 0, 100, true], ["b", 0, 100, true], ["c", 0, 100, true], ["d", 100, 78, false]].map(([u, five, week, held]) => ({
+  provider: "codex", name: "Codex", kind: "subscription", icon: "openai", plan: "Plus", user: u + "@example.com", readAt: iso(now),
+  windows: [{ name: "5 hours", used: five, resetsAt: iso(now + 4 * 3600e3), ...(held ? { heldBy: "7 days" } : {}) }, { name: "7 days", used: week, resetsAt: iso(now + 3 * 24 * 3600e3) }],
+}));
+for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+  for (const lang of Object.keys(heldWords)) {
+    test(`${engine} ${lang}: 5 hours an account can't spend before its week count as none left in all (#4791)`, async (t) => {
+      const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+      t.after(() => browser.close());
+      const w = heldWords[lang];
+      const check = async (page, strip) => {
+        await strip.first().waitFor();
+        const ws = strip.locator(".quota-all-w");
+        assert.equal(await ws.count(), 2);
+        const [five, week] = [ws.nth(0), ws.nth(1)];
+        const fiveTip = await five.getAttribute("title");
+        assert.ok(fiveTip.includes(w.held), fiveTip);
+        assert.ok(!(await week.getAttribute("title")).includes(w.held));
+        return [await five.locator(".quota-all-n").textContent(), await week.locator(".quota-all-n").textContent()];
+      };
+      // the Usage page, left
+      const { page, errors } = await open(browser, lang, "light", "window", "http://magpie.test/?view=usage", 440, 900, heldCards);
+      const strip = page.locator('#subscriptionUsage > [data-key="codex"] .quota-all');
+      await strip.waitFor();
+      await page.locator("#quotaMode .opt").nth(1).click();
+      await page.waitForFunction(() => /left|剩|残|übrig/i.test(document.querySelector('#subscriptionUsage > [data-key="codex"] .quota-all .quota-all-n')?.textContent || ""));
+      const [five, week] = await check(page, strip);
+      assert.equal(pct(five), 0, "no 5 hours left in all, not 75%: " + five);
+      assert.equal(pct(week), 5.5, week);
+      if (w.five) assert.equal(five, w.five);
+      if (w.week) assert.equal(week, w.week);
+      assert.deepEqual(await fits(page, ".quota-all"), []);
+      await shot(page, `held-usage-${engine}-${lang}`);
+      assert.deepEqual(errors, []);
+      // the tray panel
+      const panel = await open(browser, lang, "light", "panel", "http://magpie.test/?mode=panel", 360, 760, heldCards);
+      await panel.page.locator('#ptabs [data-ptab="usage"]').click();
+      const pq = panel.page.locator("#panelQuota .pq-group .pq-all");
+      const [pfive, pweek] = await check(panel.page, pq);
+      // the panel says what is used, as its settings have it
+      assert.equal(pct(pfive), 100, "every 5 hours used or held, not 25% used: " + pfive);
+      assert.equal(pct(pweek), 94.5, pweek);
+      assert.deepEqual(await fits(panel.page, ".pq-all"), []);
+      await shot(panel.page, `held-panel-${engine}-${lang}`);
+      assert.deepEqual(panel.errors, []);
+    });
   }
 }

@@ -348,6 +348,11 @@ func (s *signInFlow) begin() error {
 			return err
 		}
 	case "codex":
+		if s.site == CodexDeviceSite {
+			// a code entered on ChatGPT's device page: nothing comes back
+			// to this computer (codex_device_signin.go)
+			return startCodexDeviceSignIn(s)
+		}
 		// ChatGPT sends the browser back only to this one port. One that
 		// can't be had (Windows reserves it, or another program holds it)
 		// doesn't stop the sign-in: the page the browser ends on has the
@@ -776,7 +781,7 @@ func postTokenWith(ctx context.Context, tokenURL, ctype, bearer string, h http.H
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := Keyed(http.DefaultClient).Do(req)
 	if err != nil {
 		return err
 	}
@@ -833,7 +838,7 @@ func claudeLogin(c claudeCredentials, acct map[string]any) (savedLogin, error) {
 		return savedLogin{}, err
 	}
 	profile, _ := json.Marshal(acct)
-	return savedLogin{Agent: "claude", User: claudeUser(email, c.OAuth.SubscriptionType, acct), Plan: c.OAuth.SubscriptionType, Auth: auth, Profile: profile}, nil
+	return savedLogin{Agent: "claude", User: claudeUser(email, c.OAuth.SubscriptionType, acct), Plan: c.OAuth.plan(), Auth: auth, Profile: profile}, nil
 }
 
 func codexExchange(ctx context.Context, code, verifier, redirect string) (savedLogin, error) {

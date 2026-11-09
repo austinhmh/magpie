@@ -53,6 +53,7 @@ func ShareGroup(id string) (string, error) {
 	g.Matched = nil
 	g.Auto, g.Hidden, g.Disabled = false, false, false
 	g.Accounts = nil // this magpie's accounts: another has its own
+	g.Seen = nil     // what this magpie found: another finds its own
 	g.Rules = slices.DeleteFunc(g.Rules, Rule.ByFolder)
 	out, err := json.Marshal(SharedGroup{Magpie: ShareMark, Version: ShareVersion, Group: g})
 	return string(out), err
@@ -99,6 +100,9 @@ type Imported struct {
 	// member they send to, or the classifier their intent needs, or for
 	// holding by a folder of the sharer's.
 	Rules int `json:"rules,omitempty"`
+	// Replaced: the text's id was a group of the user's, which it
+	// replaced (ImportGroupOver) instead of adding another.
+	Replaced bool `json:"replaced,omitempty"`
 }
 
 // ReadShared reads a shared group's text, as copied or pasted from a chat:
@@ -138,7 +142,18 @@ func ReadShared(text string) (SharedGroup, error) {
 // serves it (Instead), else left out (Missing), and with it the rules that
 // send to it and its place among the fast and off members. Nothing is
 // added when none of its members is left.
-func ImportGroup(text string) (Imported, error) {
+func ImportGroup(text string) (Imported, error) { return importGroup(text, false) }
+
+// ImportGroupOver is ImportGroup that, when the text's group id is a group
+// of the user's own (not one magpie found, not one removed), replaces that
+// group by what the text holds, in its place in the list, rather than
+// adding another. Only that group changes. What the text can't carry stays
+// as the user has it: the group's accounts, its rules that hold by a
+// folder, whether it is switched on and its place among the groups. With
+// no such group it adds one, as ImportGroup does.
+func ImportGroupOver(text string) (Imported, error) { return importGroup(text, true) }
+
+func importGroup(text string, over bool) (Imported, error) {
 	s, err := ReadShared(text)
 	if err != nil {
 		return Imported{}, err
@@ -193,6 +208,7 @@ func ImportGroup(text string) (Imported, error) {
 		return ok && !CanFast(p, id)
 	})
 	g.Weights = renamedWeights(g.Weights, func(m string) string { return here[strings.TrimSpace(m)] })
+	g.EffortMaps = renamedEffortMaps(g.EffortMaps, func(m string) string { return here[strings.TrimSpace(m)] })
 	if g.Routing != Manual && len(g.Off) == len(g.Members) {
 		g.Off = nil // the ones it sent to are gone: those left are on
 	}
@@ -235,6 +251,35 @@ func ImportGroup(text string) (Imported, error) {
 	name := strings.TrimSpace(g.Name)
 	if name == "" {
 		name = "Shared group"
+	}
+	id := strings.ToLower(strings.TrimSpace(g.ID))
+	if i := slices.IndexFunc(all, func(o Group) bool { return over && id != "" && o.ID == id && !o.Auto && !o.Hidden }); i >= 0 {
+		// the user's group of that id: its name stays free of the others'
+		// names, and what the text can't carry stays as it is
+		old := all[i]
+		g.Name, _ = freeGroupName(slices.DeleteFunc(slices.Clone(all), func(o Group) bool { return o.ID == id }), name, id)
+		g.ID = old.ID
+		g.Accounts = old.Accounts
+		for _, r := range old.Rules {
+			if !r.ByFolder() {
+				continue
+			}
+			r.MapUses(func(u string) string {
+				if slices.Contains(in, u) {
+					return u
+				}
+				return ""
+			})
+			if r.Use != "" && (r.Intent == "" || g.Classifier != "") {
+				g.Rules = append(g.Rules, r)
+			}
+		}
+		g.Auto, g.Hidden, g.Disabled = false, false, false
+		if err := SaveGroup(g); err != nil {
+			return res, err
+		}
+		res.ID, res.Name, res.Replaced = g.ID, g.Name, true
+		return res, nil
 	}
 	g.Name, g.ID = freeGroupName(all, name, "")
 	g.Auto, g.Hidden, g.Disabled = false, false, false

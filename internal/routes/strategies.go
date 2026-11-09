@@ -11,7 +11,8 @@ import (
 )
 
 // Shares of an allowance past which an account is kept for when the others
-// can't take a request: low, and all but used up — where the agent signed
+// can't take a request: low (in Smart and Use before expiry, of a rate cap:
+// Seat.WeekLow), and all but used up — where the agent signed
 // in to it is signed in to another, too (provider.SpentShare).
 const (
 	LowShare  = 90
@@ -31,12 +32,19 @@ func tier(share float64) int {
 
 // seatTier is tier of the seat's share used, but 0 for one set to spend
 // its credits before another account (Seat.First): a window it uses up
-// doesn't send its requests elsewhere (jojonas_xyz on X).
+// doesn't send its requests elsewhere (jojonas_xyz on X). Running low on
+// its week alone (Seat.WeekLow) is 0 too: Smart and Use before expiry
+// spend what is lost at the reset, and a week at 90% renewing today was
+// kept for last behind one renewing tomorrow (ysicing_01858 on Discord).
+// All but used up is 2 whatever the window.
 func seatTier(s Seat) int {
 	if s.First {
 		return 0
 	}
-	return tier(s.Used)
+	if t := tier(s.Used); t != 1 || !s.WeekLow {
+		return t
+	}
+	return 0
 }
 
 // byLeft is how a pool's wallets go by what they have left (Seat.Left),
@@ -106,7 +114,11 @@ func identity(n int) []int {
 // Smart is the default: of those with quota to spare, the one whose
 // allowance renews soonest, since what it has left is lost then, while one
 // renewing later keeps: the biggest window decides — the week, not the five
-// hours in it — and the next one only when that renews in the same hour. An
+// hours in it — and the next one only when that renews in the same hour. A
+// biggest window whose left the next can no longer let through before it
+// renews (Seat.Unreached: a Volcengine Agent Plan's month two weeks out,
+// with more left than two weeks hold) is passed over: what the week
+// leaves is lost at its reset then, so the week decides (#5639). An
 // account with no week (Claude Enterprise's five hours alone) goes by its
 // five hours, so ahead of every week but one renewing sooner; a window not
 // started renews its whole span from now (#576). A Codex account that
@@ -145,7 +157,9 @@ var Smart = Strategy{Order: func(_ string, seats []Seat) []int {
 		if a.Learns != b.Learns {
 			return a.Learns
 		}
-		ri, rj := a.Soon, b.Soon
+		// a window that can't be used up before it renews any more ranks
+		// it no more: the next one does (Seat.Unreached)
+		ri, rj := a.Soon[min(a.Unreached, len(a.Soon)):], b.Soon[min(b.Unreached, len(b.Soon)):]
 		for k := 0; k < len(ri) || k < len(rj); k++ {
 			var x, y time.Time // to the hour, so a few minutes don't reorder
 			if k < len(ri) {
@@ -176,8 +190,28 @@ var Smart = Strategy{Order: func(_ string, seats []Seat) []int {
 	})
 	sort.SliceStable(low, func(i, j int) bool { return seats[low[i]].Used < seats[low[j]].Used })
 	sort.SliceStable(spent, func(i, j int) bool { return spentBefore(seats[spent[i]], seats[spent[j]]) })
-	return append(append(fine, low...), spent...)
+	return leadFirst(seats, append(append(fine, low...), spent...))
 }}
+
+// leadFirst is order with the seats of a provider set to be used first
+// (Seat.Lead) ahead of the rest, each side in order's own order: a key's
+// monthly credit spent before a subscription that serves the same model
+// (hzh_1119 on Discord). One all but used up stays with the others that
+// are, and one resting is passed over by the gateway as any is.
+func leadFirst(seats []Seat, order []int) []int {
+	var lead, rest []int
+	for _, i := range order {
+		if seats[i].Lead && seatTier(seats[i]) < 2 {
+			lead = append(lead, i)
+		} else {
+			rest = append(rest, i)
+		}
+	}
+	if len(lead) == 0 {
+		return order
+	}
+	return append(lead, rest...)
+}
 
 // spentBefore orders two seats all but used up: one that goes on on its
 // credits first (a Codex account holding them answers past its allowance;
@@ -342,9 +376,11 @@ var LeastUsed = Strategy{ByUse: true, Order: func(_ string, seats []Seat) []int 
 // the most left alone (least used) sends a fresh account ahead of one with
 // 80% left and an hour to go, and the soonest reset alone (smart) sends one
 // with 3% left and an hour to go ahead of one with 90% and two. The tiers
-// are Smart's: one at 90% or more of any window that counts the model — the
-// five hours too, a rate cap it would be sent into before its allowance was
-// read again — waits until the others can't answer, one all but used up
+// are Smart's: one at 90% or more of a rate cap that counts the model —
+// the five hours, which it would be sent into before its allowance was
+// read again — waits until the others can't answer (a week at 90% alone
+// doesn't: what it has left is lost at its reset, Seat.WeekLow), one all
+// but used up
 // until nothing else can; each tier by the share used, one all but used up
 // that goes on on its credits first (spentBefore). Among the rest, one
 // not known that tells what it has left as it answers goes first while it
@@ -461,6 +497,74 @@ var FreeFirst = Strategy{ByFree: true, Order: func(_ string, seats []Seat) []int
 	return append(free, paid...)
 }}
 
+// FreeExpiring spends free quota before paid, and of the free, what is
+// lost soonest first (wowbbs on Discord: check-in accounts of WorkBuddy,
+// MiniMax, Trae and Qoder in one group, each given quota that lapses on
+// its own day). A seat is free when its model costs nothing there (Free)
+// or its account's plan is a free one (FreePlan). The order is:
+//
+//   - the free seats with quota left, by when it is lost first, to the
+//     hour (Expires: the soonest of its windows' renewals and of its
+//     credits' lapse); one that tells neither after those that do, those
+//     alike in their listed order;
+//   - the paid seats with quota left, as Smart orders them;
+//   - the used up, free or paid (a known window all but used up, or
+//     resting out of quota or credit), as Smart orders its used up.
+//
+// So a free account is spent until it is used up or expires, then the
+// next free one, and a paid one only once no free one has quota left.
+// Rests and failover are as for every routing.
+var FreeExpiring = Strategy{ByFree: true, ByPlan: true, Order: func(pool string, seats []Seat) []int {
+	var free, paid, spent []int
+	for i, s := range seats {
+		switch {
+		case s.Spent || seatTier(s) == 2:
+			spent = append(spent, i)
+		case s.Free || s.FreePlan:
+			free = append(free, i)
+		default:
+			paid = append(paid, i)
+		}
+	}
+	sort.SliceStable(free, func(i, j int) bool {
+		x, y := Expires(seats[free[i]]).Truncate(time.Hour), Expires(seats[free[j]]).Truncate(time.Hour)
+		if x.Equal(y) {
+			return false
+		}
+		if x.IsZero() || y.IsZero() {
+			return y.IsZero()
+		}
+		return x.Before(y)
+	})
+	if len(paid) > 1 {
+		sub := make([]Seat, len(paid))
+		for k, i := range paid {
+			sub[k] = seats[i]
+		}
+		by := Smart.Order(pool, sub)
+		ordered := make([]int, len(paid))
+		for k, i := range by {
+			ordered[k] = paid[i]
+		}
+		paid = ordered
+	}
+	sort.SliceStable(spent, func(i, j int) bool { return spentBefore(seats[spent[i]], seats[spent[j]]) })
+	return append(append(free, paid...), spent...)
+}}
+
+// Expires is when the soonest of what a seat has left is lost: the first
+// of its windows' renewals (Soon) and its credits' lapse (Lapse), zero
+// when it tells neither.
+func Expires(s Seat) time.Time {
+	var t time.Time
+	for _, x := range append(slices.Clip(s.Soon), s.Lapse) {
+		if !x.IsZero() && (t.IsZero() || x.Before(t)) {
+			t = x
+		}
+	}
+	return t
+}
+
 // Cheapest sends a request where its model costs least at the request's
 // time: the priced seats by Cost (a million tokens in and a million out),
 // those that cost the same by CacheCost, then the seats whose price isn't
@@ -506,13 +610,14 @@ func sameCost(a, b float64) bool {
 // Builtin are the routings besides Smart and their strategies, as
 // plugins/rotation registers them.
 var Builtin = map[string]Strategy{
-	provider.Ordered:   Ordered,
-	provider.Rotate:    Rotate,
-	provider.LeastUsed: LeastUsed,
-	provider.Pace:      Pace,
-	provider.Weighted:  Weighted,
-	provider.FreeFirst: FreeFirst,
-	provider.Fastest:   Fastest,
-	provider.Cheapest:  Cheapest,
-	provider.Drain:     Drain,
+	provider.Ordered:      Ordered,
+	provider.Rotate:       Rotate,
+	provider.LeastUsed:    LeastUsed,
+	provider.Pace:         Pace,
+	provider.Weighted:     Weighted,
+	provider.FreeFirst:    FreeFirst,
+	provider.Fastest:      Fastest,
+	provider.Cheapest:     Cheapest,
+	provider.Drain:        Drain,
+	provider.FreeExpiring: FreeExpiring,
 }

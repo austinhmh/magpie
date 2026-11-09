@@ -30,7 +30,10 @@
 <link rel="alternate" hreflang="en" href="https://usemagpie.ai/docs/masking">
 <link rel="alternate" hreflang="zh" href="https://usemagpie.ai/docs/zh/masking">
 <link rel="alternate" hreflang="ja" href="https://usemagpie.ai/docs/ja/masking">
+<link rel="alternate" hreflang="x-default" href="https://usemagpie.ai/docs/masking">
+<link rel="canonical" href="https://usemagpie.ai/docs/ja/masking">
 <link rel="stylesheet" href="/docs.css">
+<meta property="og:site_name" content="magpie">
 <meta property="og:title" content="プライバシーマスキング">
 <meta property="og:description" content="キー、パスワード、個人情報をコンピュータに留める：送る前にマスクし、応答で元に戻します。">
 <meta property="og:image" content="https://usemagpie.ai/img/og.png">
@@ -51,6 +54,14 @@
     <a class="toc-only" href="/docs/ja/privacy">プライバシー</a>
     <a class="toc-only" href="/docs/ja/masking">プライバシーマスキング</a>
     <a class="toc-only" href="/docs/ja/mcp-router">MCP ルーター</a>
+    <a class="toc-only" href="/docs/ja/library">ライブラリ</a>
+    <a class="toc-only" href="/docs/ja/claude-code-models">Claude Code で他のモデル</a>
+    <a class="toc-only" href="/docs/ja/codex-models">Codex で他のモデル</a>
+    <a class="toc-only" href="/docs/ja/gemini-cli-models">Gemini CLI で他のモデル</a>
+    <a class="toc-only" href="/docs/ja/subscriptions">サブスクを任意のエージェントで</a>
+    <a class="toc-only" href="/docs/ja/local-models">ローカルモデル</a>
+    <a class="toc-only" href="/docs/ja/opencode-models">OpenCode で他のモデル</a>
+    <a class="toc-only" href="/docs/ja/alternatives">CC Switch・CCR との比較</a>
     <a href="/docs/ja/import">magpie に追加</a>
     <a href="/docs/integrate">アプリ連携</a>
     <a href="https://github.com/yetone/magpie-releases/releases">リリース</a>
@@ -93,7 +104,7 @@
       <li><b>ページを開く</b><span class="ui">設定</span> → <span class="ui">プライバシー</span> を開きます。</li>
       <li><b>シークレットをマスク</b><span class="ui">マスクするもの</span> の <span class="ui">シークレットをマスク</span> を <span class="ui">オン</span> にします。API キー、秘密鍵、トークン、パスワードが対象です。</li>
       <li><b>必要なら個人情報も</b><span class="ui">個人情報をマスク</span> を <span class="ui">オン</span> にすると、メールアドレス、電話番号、ID 番号、銀行カード番号もマスクされます。オンにすると、その下に個人情報の種類ごとのスイッチが並びます。</li>
-      <li><b>自分の語</b><span class="ui">マスクする語</span> に、ベンダーに見せたくない名前、コードネーム、ホスト名をカンマ区切りで入れます。<span class="ui">マスクする語の大文字・小文字を区別しない</span> をオンにすると、<em>Nightjar</em> で <em>NIGHTJAR</em> もマスクされます。magpie が知らないシークレット（自分のゲートウェイのキーなど）は <span class="ui">マスクルール</span> に、先頭の文字列か正規表現で追加します。</li>
+      <li><b>自分の語</b><span class="ui">マスクする語</span> に、ベンダーに見せたくない名前、コードネーム、ホスト名を 1 行に 1 つずつ入れます（カンマ区切りで貼り付けると 1 つずつの行になります）。<span class="ui">マスクする語の大文字・小文字を区別しない</span> をオンにすると、<em>Nightjar</em> で <em>NIGHTJAR</em> もマスクされます。magpie が知らないシークレット（自分のゲートウェイのキーなど）は <span class="ui">マスクルール</span> に、先頭の文字列か正規表現で追加します。</li>
       <li><b>試す</b><span class="ui">試す</span> にテキストを貼ると、ベンダーが実際に受け取る内容が表示されます。貼った内容は保存されません。</li>
     </ol>
     <p>変更は次のリクエストから効き、再起動もエージェント側の変更もいりません。実際にマスクするのは組み込みプラグイン <span class="ui">プライバシーマスキング</span>（<code>redact</code>、<span class="ui">設定</span> → <span class="ui">プラグイン</span>）で、何かのマスクが求められている間は常にオンです。</p>
@@ -174,6 +185,14 @@
     <a href="/docs/ja/privacy">プライバシー</a>
     <a href="/docs/ja/masking">プライバシーマスキング</a>
     <a href="/docs/ja/mcp-router">MCP ルーター</a>
+    <a href="/docs/ja/library">ライブラリ</a>
+    <a href="/docs/ja/claude-code-models">Claude Code で他のモデル</a>
+    <a href="/docs/ja/codex-models">Codex で他のモデル</a>
+    <a href="/docs/ja/gemini-cli-models">Gemini CLI で他のモデル</a>
+    <a href="/docs/ja/subscriptions">サブスクを任意のエージェントで</a>
+    <a href="/docs/ja/local-models">ローカルモデル</a>
+    <a href="/docs/ja/opencode-models">OpenCode で他のモデル</a>
+    <a href="/docs/ja/alternatives">CC Switch・CCR との比較</a>
     <a href="/docs/ja/import">magpie に追加</a>
     <a href="/docs/integrate">アプリ連携</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

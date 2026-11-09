@@ -37,6 +37,10 @@ import (
 // (docs.factory.com/cli/configuration/mcp). Qoder and CodeBuddy, like
 // Claude Code, ask the user to approve a project's server before using
 // it. Each is written in the shape the agent's user-wide file has.
+// DeepSeek Harness has none: its servers are @deepseek-ai/dsh-mcp-client
+// rows in a profile's patch layers (bundles, the profile's and
+// $DSH_HOME's cordis.patch.yml, --patch overlays; composeProfile in
+// @deepseek-ai/dsh 0.2.1-rc.5's profile-boot), none of them the project's.
 var projectMCPFiles = map[string]struct {
 	rel    string
 	format mcpFormat
@@ -153,7 +157,7 @@ func (l *Library) syncProjectMCP(p *Project, fail func(what string, err error)) 
 			continue
 		}
 		abs := filepath.Join(p.Dir, filepath.FromSlash(rel))
-		f := &mcpFile{Path: abs, Format: format}
+		f := &mcpFile{Path: abs, Format: format, NoCmdRefs: rel == projectMCPFiles["droid"].rel}
 		had := p.Wrote[rel]
 		was := p.Startup[rel]
 		now := map[string]float64{}
@@ -183,7 +187,7 @@ func (l *Library) syncProjectMCP(p *Project, fail func(what string, err error)) 
 			}
 		}
 		for _, s := range want[rel] {
-			s := wroteStartup(s, was[s.Name])
+			s := wroteStartup(f.withCmdVars(s), was[s.Name])
 			old := entries[s.Name]
 			if old != nil && !slices.Contains(had, s.Name) {
 				fail("mcp:"+s.Name, fmt.Errorf("%s has a server called %s already that isn't magpie's: it's left as it is", rel, s.Name))

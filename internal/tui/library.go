@@ -65,7 +65,7 @@ func (m *model) reloadLibrary() {
 			what = strings.TrimSpace(s.Command + " " + strings.Join(s.Args, " "))
 		}
 		if s.Local {
-			what = "this computer only · " + what
+			what = "not synced · " + what
 		}
 		m.lib = append(m.lib, libRow{kind: "mcp", name: s.Name, about: what, on: s.Agents, bad: len(s.Problems)})
 	}
@@ -246,6 +246,13 @@ func libSaid(res *library.Result, done string) (string, bool) {
 	if len(res.Installed) == 0 && len(res.Had) > 0 {
 		done = strings.Join(res.Had, ", ") + " in the library already"
 	}
+	// a skill from a folder, linked to the one installed (skill_link.go)
+	if len(res.Installed) == 0 && len(res.Linked) > 0 {
+		done = strings.Join(res.Linked, ", ") + " updates from GitHub now"
+	}
+	if len(res.LinkedKept) > 0 {
+		done += " · files of their own kept with the backups: " + strings.Join(res.LinkedKept, ", ")
+	}
 	for _, p := range res.Skipped {
 		done += " · " + strings.TrimPrefix(p.What, "skill:") + " skipped: " + p.Error
 	}
@@ -424,8 +431,9 @@ func saveServer(old *library.Server, line string) tea.Cmd {
 		if old != nil {
 			was, done = old.Name, "saved "+s.Name
 			// and its OAuth app and startup timeout, which only the GUI edits
-			// and whether it is kept to this computer, and out of the hub
-			s.Agents, s.Env, s.Headers, s.OAuth, s.StartupTimeout, s.Local, s.Hub = old.Agents, old.Env, old.Headers, old.OAuth, old.StartupTimeout, old.Local, old.Hub
+			// and whether it is kept to this computer, and out of the hub,
+			// and the user's note on it
+			s.Agents, s.Env, s.Headers, s.OAuth, s.StartupTimeout, s.Local, s.Hub, s.Note = old.Agents, old.Env, old.Headers, old.OAuth, old.StartupTimeout, old.Local, old.Hub, old.Note
 		}
 		return libCmd(func() (*library.Result, error) { return library.SaveServer(was, s) }, done)()
 	}
@@ -455,6 +463,10 @@ func (m *model) openProbe(p *library.Probe) {
 			note = "in the library as " + c.As + " · " + note
 		case c.Have:
 			note = "in the library already · " + note
+		case c.Links:
+			// the library's by its name came from a folder: this one
+			// takes its place, and it updates from GitHub from then on
+			note = "links the library's to GitHub · " + note
 		case c.As != "":
 			// another skill from elsewhere has its name
 			note = "adds as " + c.As + " · " + note

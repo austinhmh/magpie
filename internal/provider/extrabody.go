@@ -13,8 +13,8 @@ package provider
 //     it replaces the body's own.
 //   - ${sessionId} in a string value, at any depth, is the conversation's
 //     id: the session the agent names (its session header), else one
-//     magpie derives from the conversation's first user message — the same
-//     for every turn of it. A fixed string would put every session on one
+//     magpie derives from how the conversation opens (the gateway's
+//     conversationID), the same for every turn of it. A fixed string would put every session on one
 //     cache key. ${threadId} is the thread's (conversation.go); Headers
 //     take both too.
 //   - ${subagentId} in a string value is the Claude Code subagent the
@@ -211,8 +211,13 @@ func withSession(v any, c Conversation) any {
 // out: the extra fields, on a session of the test's own, then what the
 // backend adjusts; ctx carries the same session, for the headers Sign
 // puts on it. The conversation names no subagent, so ${subagentId} in an
-// extra body value goes out filled with "".
-func (p Provider) tested(ctx context.Context, body string) (context.Context, []byte) {
+// extra body value goes out filled with "". A body for an embeddings or
+// rerank url (tinyRetrieval) goes as it is, as the gateway sends one.
+func (p Provider) tested(ctx context.Context, url, body string) (context.Context, []byte) {
 	c := OwnConversation("magpie-test-")
-	return WithConversation(ctx, c), p.Prepare(p.WithExtraBody([]byte(body), c))
+	ctx = WithConversation(ctx, c)
+	if strings.HasSuffix(url, "/embeddings") || strings.HasSuffix(url, "/rerank") {
+		return ctx, []byte(body)
+	}
+	return ctx, p.Prepare(p.WithExtraBody([]byte(body), c))
 }

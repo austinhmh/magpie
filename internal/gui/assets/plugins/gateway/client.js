@@ -21,6 +21,7 @@ let connectFolded = true;
 try { connectFolded = localStorage.getItem("magpie.gwConnectFolded") !== "0"; } catch {}
 const expandedCalls = new Set(); // recent-call ids whose wire bodies are open
 const callBodies = new Map(); // callRow → its bodies, read when it is opened (#1521)
+const wireOpen = new Set(); // recent-call ids whose HTTP headers are open
 // recent calls drawn a page at a time, as many as the plugin's setting
 // says (callsPage)
 let callsPage = 20;
@@ -275,14 +276,17 @@ function renderGatewayLan() {
   // the one they reach, MAGPIE_PUBLIC_URL's, not this computer's loopback
   // (#1551)
   const shown = web && g.publicURL || g.url;
-  line(t(shown === g.url ? "This computer" : "Public address"), shown);
+  const { urls, others, sub } = gwLAN(g);
+  line(addrWho(g, shown, others), shown);
   if (g.lan) {
-    const { urls, sub } = lanShown(g.lanURLs || [], prefs?.lanContainer);
-    // an internet address on an interface (an ISP's static one) is said
-    // to be one, not listed as this network's
-    const far = new Set(g.lanPublic || []), rest = urls.filter((u) => u !== shown);
-    rest.filter((u) => !far.has(u)).forEach((u, i) => line(i ? "" : t("Local network"), u));
-    rest.filter((u) => far.has(u)).forEach((u, i) => line(i ? "" : t("On the internet"), u));
+    // each address named as Connect's menu names it (addrWho): this
+    // network's first, then the one other containers on this host use
+    // (the host's Docker bridge address), then one on the internet (an
+    // ISP's static one); a name said once for the lines it heads
+    const said = [addrWho(g, shown, others)], rest = urls.filter((u) => u !== shown);
+    const order = [t("Local network"), t("Public address"), t("Other containers on this host"), t("On the internet")];
+    rest.map((u) => [addrWho(g, u, others), u]).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
+      .forEach(([who, u]) => { line(said.at(-1) === who ? "" : who, u); said.push(who); });
     if (!urls.length) list.append(el("div", "gw-url-none", t("This computer has no local network address right now")));
     if (sub) list.append(el("div", "gw-url-none", sub));
   }
@@ -503,7 +507,7 @@ function renderConnect() {
   // no SDK speaks System One, so it has no shell variables to set
   const langs = f.baseEnv ? langs4() : langs4().filter(([id]) => id !== "shell");
   const snipLang = langs.some(([id]) => id === lang) ? lang : "curl";
-  const urls = [g.url, ...(g.lanURLs || [])];
+  const urls = [g.url, ...gwLAN(g).urls];
   // the address picked is kept (coeo91): an address not offered right now
   // (the network not up yet after a start) shows this computer's, and the
   // pick comes back with it. With none picked, MAGPIE_PUBLIC_URL is where
@@ -541,7 +545,7 @@ function renderConnect() {
 
   const b = el("div", "val");
   if (urls.length > 1) b.append(connectPick("connectAddress", "Address", base,
-    urls.map((u) => ({ v: u, name: f.base(u), note: t(u === g.url ? "This computer" : u === g.publicURL ? "Public address" : "Local network") })), connectURL,
+    urls.map((u) => ({ v: u, name: f.base(u), note: addrWho(g, u, gwLAN(g).others) })), connectURL,
     (u) => { connectWant = u; keepPick("magpie.connectAddress", u); renderConnect(); }));
   else b.append(el("code", "", base));
   b.append(copyBtn(base, "Base URL"));
@@ -691,6 +695,7 @@ function renderActivity() {
   const ids = new Set(g.calls.map(callRow));
   for (const id of callBodies.keys()) if (!ids.has(id)) callBodies.delete(id);
   for (const id of expandedCalls) if (!ids.has(id)) expandedCalls.delete(id);
+  for (const id of wireOpen) if (!ids.has(id)) wireOpen.delete(id);
   const box = $("#activity");
   // a body being read keeps its place as new calls come in
   const kept = new Map();
@@ -702,7 +707,9 @@ function renderActivity() {
   for (const c of calls) {
     const id = callRow(c);
     const open = expandedCalls.has(id);
-    const item = el("div", "call-item" + (open ? " open" : "") + (c.status >= 400 ? " bad" : ""));
+    // a call its agent canceled (c.canceled) saw no error: told in the
+    // muted colour, neither failed nor answered
+    const item = el("div", "call-item" + (open ? " open" : "") + (c.status >= 400 ? (c.canceled ? " gone" : " bad") : ""));
     const r = el("div", "call");
     r.setAttribute("role", "button");
     r.setAttribute("tabindex", "0");
@@ -744,6 +751,11 @@ function renderActivity() {
       );
       item.dataset.id = id;
       item.append(details);
+      // the headers both ways, folded (wireHeadersView, usage/page.js)
+      if (body.headers) item.append(wireHeadersView(body.headers, wireOpen.has(id), () => {
+        if (wireOpen.has(id)) wireOpen.delete(id); else wireOpen.add(id);
+        renderActivity();
+      }));
     }
     box.append(item);
   }

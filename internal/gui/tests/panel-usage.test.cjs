@@ -197,19 +197,18 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert(tip.includes("Claude") && tip.includes("Relay"), tip);
       await p.mouse.move(2, 2);
 
-      // Native fit includes the Usage tab, and all controls fit without
-      // scrolling: each tab's whole layout (the view's padding, the header,
+      // Native fit is the tab showing, and all its controls fit without
+      // scrolling: the tab's whole layout (the view's padding, the header,
       // tabs and foot), not its section's height alone
       const need = await p.evaluate(() => {
-        const body = document.body, v = document.querySelector("#view-agents"), tab = body.dataset.ptab, out = {};
+        const body = document.body, v = document.querySelector("#view-agents"), tab = body.dataset.ptab, out = { tab };
         for (const t of ["agents", "usage", "stats", "routing"]) { body.dataset.ptab = t; out[t] = Math.ceil(body.clientHeight - v.offsetHeight + v.scrollHeight); }
         body.dataset.ptab = tab;
         return out;
       });
-      const height = Math.max(...Object.values(need));
+      const height = need[need.tab];
       for (let i=0;i<40 && fitted.at(-1) !== height;i++) await p.waitForTimeout(25);
-      assert(fitted.at(-1) >= need.usage, `the panel fits the Usage tab: ${fitted.at(-1)} < ${need.usage}`);
-      assert.equal(fitted.at(-1),height,"the panel fits its tallest tab including Usage");
+      assert.equal(fitted.at(-1),height,`the panel fits the ${need.tab} tab showing`);
       const scroll = () => p.locator("#view-agents").evaluate(v => v.scrollTop);
       const before = await scroll();
       await p.locator("#panelUsage .pu-card .segs .opt").nth(1).click();
@@ -247,7 +246,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await p.locator("#panelUsage:not(.pu-loading)").waitFor();
       const selectedDay = asked.at(-1).get("day");
       assert.equal(await p.locator('#panelUsage .led-day[aria-pressed="true"]').getAttribute("aria-label"), label);
-      assert.equal(await p.locator("#panelUsage .led-rank .rk").first().locator(".rk-val").textContent(), "900,000");
+      assert.equal(await p.locator("#panelUsage .led-rank .rk").first().locator(".rk-val").textContent(), "900K");
+      assert.equal(await p.locator("#panelUsage .led-rank .rk").first().locator(".rk-val").getAttribute("title"), "900,000");
       assert.deepEqual(await p.locator("#panelUsage rect.col").evaluateAll((rs) => rs.map((r) => [r.dataset.day, r.dataset.k, r.getAttribute("height"), r.dataset.color])), original, "the chart keeps its heights and colors");
       const dimmed = () => p.locator("#panelUsage rect.col").evaluateAll((rs, day) => rs.every((r) => r.dataset.day === day ? r.style.opacity === "" && r.style.fill === r.dataset.color : r.style.opacity === "0.22" && r.style.fill === "var(--faint)"), selectedDay);
       assert(await dimmed(), "the other days are gray");

@@ -30,7 +30,10 @@
 <link rel="alternate" hreflang="en" href="https://usemagpie.ai/docs/privacy">
 <link rel="alternate" hreflang="zh" href="https://usemagpie.ai/docs/zh/privacy">
 <link rel="alternate" hreflang="ja" href="https://usemagpie.ai/docs/ja/privacy">
+<link rel="alternate" hreflang="x-default" href="https://usemagpie.ai/docs/privacy">
+<link rel="canonical" href="https://usemagpie.ai/docs/privacy">
 <link rel="stylesheet" href="/docs.css">
+<meta property="og:site_name" content="magpie">
 <meta property="og:title" content="Privacy">
 <meta property="og:description" content="Everything magpie sends by itself, and how to turn it off.">
 <meta property="og:image" content="https://usemagpie.ai/img/og.png">
@@ -51,6 +54,14 @@
     <a class="toc-only" href="/docs/privacy">Privacy</a>
     <a class="toc-only" href="/docs/masking">Privacy masking</a>
     <a class="toc-only" href="/docs/mcp-router">MCP router</a>
+    <a class="toc-only" href="/docs/library">Library</a>
+    <a class="toc-only" href="/docs/claude-code-models">Models in Claude Code</a>
+    <a class="toc-only" href="/docs/codex-models">Models in Codex</a>
+    <a class="toc-only" href="/docs/gemini-cli-models">Models in Gemini CLI</a>
+    <a class="toc-only" href="/docs/subscriptions">Subscriptions in any agent</a>
+    <a class="toc-only" href="/docs/local-models">Local models</a>
+    <a class="toc-only" href="/docs/opencode-models">Models in OpenCode</a>
+    <a class="toc-only" href="/docs/alternatives">magpie vs CC Switch vs CCR</a>
     <a href="/docs/import">Add to magpie</a>
     <a href="/docs/integrate">Integrate</a>
     <a href="https://github.com/yetone/magpie-releases/releases">Releases</a>
@@ -174,6 +185,7 @@
     <p>magpie asks its own site for a few things, whatever the privacy settings say, as any app asks its update server. None of these requests carries the install id or an account.</p>
     <ul>
       <li><code>/api/latest</code>: the update feed, every 6 hours unless <code>noAutoUpdate</code> is on, with <code>?lang=</code> for the notes in your language, and <code>?channel=stable</code> when <span class="ui">Settings</span> → <span class="ui">About</span> → <span class="ui">Update channel</span> is Stable. Neither says who you are. <code>/api/notes</code> gives What’s new after an update.</li>
+      <li><code>/files/&lt;version&gt;/&lt;file&gt;</code>: the release files an update and the installer download, served from Cloudflare R2. A file the site doesn’t hold is sent on to github.com. Nothing is counted.</li>
       <li><code>/api/partners</code>: the add sheet’s partner list, every 6 hours. One fetch in ten is counted as a <code>magpie partners fetch</code> event, with the country Cloudflare gives, while a partner is listed.</li>
       <li><code>/go/&lt;partner&gt;/site</code> and <code>/go/&lt;partner&gt;/keys</code>: a partner’s website and key-page links, opened in your browser, are counted (the partner, which link, a region, a country) as <code>magpie partner go</code> before you are sent on.</li>
       <li><code>/api/icon?url=…</code>: icons named by a plugin, an import link or the library are fetched through it, so their hosts see Cloudflare’s address, not yours. The worker passes the picture on and counts and keeps nothing.</li>
@@ -184,7 +196,7 @@
     <p>To price and name models magpie fetches the <a href="https://models.dev">models.dev</a> catalog (<code>models.dev/api.json</code>), and for prices in your currency the USD exchange rate from <code>open.er-api.com</code> (kept 12 hours). Plugins and their updates come from the npm registry, and the library’s items from GitHub. These are plain downloads of public data: nothing about you, your providers or your usage is sent, though, as with any request, those hosts see your IP address (or your proxy’s). magpie also asks each of your providers for your allowance and model list, with your own key or sign-in; <span class="ui">Settings</span> → <span class="ui">Allowances</span> → <span class="ui">Allowance reads</span> → <span class="ui">When I ask</span> limits those to when you ask.</p>
 
     <h2 id="otel"><a class="anchor" href="#otel">OTLP export</a></h2>
-    <p>magpie can export each gateway request to an OpenTelemetry collector of yours (Langfuse, for example). It is <b>off by default</b>, and goes only to the endpoint you set, never to us. When on, it sends per-request spans: agent, provider, model, token counts, status, timing and estimated cost. Optional switches add metrics, local agent conversations, and the request and reply bodies (secrets masked). Turn it on in <span class="ui">Settings</span> → <span class="ui">Observability</span>, or for <code>magpie serve</code> with <code>MAGPIE_OTEL_ENABLED</code>, <code>MAGPIE_OTEL_ENDPOINT</code>, <code>MAGPIE_OTEL_HEADERS</code>, <code>MAGPIE_OTEL_METRICS</code>, <code>MAGPIE_OTEL_SESSIONS</code>, <code>MAGPIE_OTEL_BODIES</code> and <code>MAGPIE_OTEL_BODIES_WHOLE</code>. An endpoint alone doesn’t turn it on. For Langfuse, pick <span class="ui">Langfuse</span> there and give its host and your project’s two keys; magpie makes the endpoint and sign-in from them. The <a href="https://github.com/yetone/magpie/blob/main/docs/reference.md#otlp-export">reference</a> has the details.</p>
+    <p>magpie can export each gateway request to an OpenTelemetry collector of yours (Langfuse, for example). It is <b>off by default</b>, and goes only to the endpoint you set, never to us. When on, it sends per-request spans: agent, provider, model, token counts, status, timing and estimated cost. Optional switches add metrics, local agent conversations, and the request and reply bodies (secrets masked). Turn it on in <span class="ui">Settings</span> → <span class="ui">Observability</span>, or for <code>magpie serve</code> with <code>MAGPIE_OTEL_ENABLED</code>, <code>MAGPIE_OTEL_ENDPOINT</code>, <code>MAGPIE_OTEL_HEADERS</code>, <code>MAGPIE_OTEL_METRICS</code>, <code>MAGPIE_OTEL_SESSIONS</code>, <code>MAGPIE_OTEL_BODIES</code> and <code>MAGPIE_OTEL_BODIES_WHOLE</code>. An endpoint alone doesn’t turn it on. For Langfuse, pick <span class="ui">Langfuse</span> there and give its host and your project’s two keys; magpie makes the endpoint and sign-in from them. Each export’s resource is <code>service.name=magpie</code>, plus only what you set yourself in <code>OTEL_RESOURCE_ATTRIBUTES</code> and <code>OTEL_SERVICE_NAME</code> (a server name, for example); nothing about your machine is looked up. The <a href="https://github.com/yetone/magpie/blob/main/docs/reference.md#otlp-export">reference</a> has the details.</p>
 
     <h2 id="masking"><a class="anchor" href="#masking">Masking what goes to providers</a></h2>
     <p>The sections above are what magpie sends by itself. What your agents send goes to the providers you chose, and <b>privacy masking</b> keeps the secrets in it on this computer. It is <b>off by default</b>; turn it on in <span class="ui">Settings</span> → <span class="ui">Privacy</span>.</p>
@@ -219,6 +231,14 @@
     <a href="/docs/privacy">Privacy</a>
     <a href="/docs/masking">Privacy masking</a>
     <a href="/docs/mcp-router">MCP router</a>
+    <a href="/docs/library">Library</a>
+    <a href="/docs/claude-code-models">Models in Claude Code</a>
+    <a href="/docs/codex-models">Models in Codex</a>
+    <a href="/docs/gemini-cli-models">Models in Gemini CLI</a>
+    <a href="/docs/subscriptions">Subscriptions in any agent</a>
+    <a href="/docs/local-models">Local models</a>
+    <a href="/docs/opencode-models">Models in OpenCode</a>
+    <a href="/docs/alternatives">magpie vs CC Switch vs CCR</a>
     <a href="/docs/import">Add to magpie</a>
     <a href="/docs/integrate">Integrate</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

@@ -38,13 +38,19 @@ type Model struct {
 	// Keys, for a vendor whose keys each see models of their own, are the
 	// keys (by fingerprint) whose list has this one; empty is every key.
 	Keys []string `json:",omitempty"`
+	// EffortsBorrowed is set when Efforts are not the source's word but
+	// borrowed for its id (a plugin's model that thinks with no variants):
+	// a model listed by another id (provider's localIDs) borrows them for
+	// that id again.
+	EffortsBorrowed bool `json:"-"`
 	// APIs, when the vendor says, are the APIs the model is served on
 	// ("chat", "responses", "anthropic"); empty is not known.
 	APIs []string `json:",omitempty"`
 	// Endpoints, in magpie's own models for an agent, are the gateway
 	// paths a request for it is relayed on as it is
-	// (provider.NativeEndpoints, /v1/models' native_endpoints); none for a
-	// group or a model translated anyway.
+	// (provider.NativeEndpoints, /v1/models' native_endpoints); a group's
+	// are those every member relays (provider.GroupEndpoints), which
+	// /v1/models leaves out; none for a model translated anyway.
 	Endpoints []string `json:"-"`
 	// Images is set on a model that takes images as input.
 	Images bool `json:",omitempty"`
@@ -79,6 +85,9 @@ type Model struct {
 	// provider after it (magpie_label): the name Provider in model names
 	// Off has here (ARNO on Discord).
 	Plain string `json:",omitempty"`
+	// Via, on a model of another magpie's list, is the magpies it passes
+	// through to its vendor, that one last (magpie_via.go)
+	Via []string `json:",omitempty"`
 	// Apart, in a list magpie hands Codex, is what tells the model from
 	// another entry Codex's picker would call the same (two providers
 	// named Codex each serving GPT-6.1-Sol, nb5p on Discord): its
@@ -118,6 +127,12 @@ type Model struct {
 	// with (a Remote magpie's Grok Imagine Video): kept with the list for
 	// its videos API, never offered as a model to talk to or draw with.
 	Films bool `json:",omitempty"`
+	// Serves is set on a vendor-listed model made for an API other than
+	// chat, images or video (ServesEmbedding, ServesRerank, ServesSpeech,
+	// ServesTranscription): kept with the list for that API's routes and
+	// their groups of one kind (provider.KindGroup), never offered to
+	// agents as a model to talk to (#5339, XYenon on Discord).
+	Serves string `json:",omitempty"`
 	// Decides marks a decision model another magpie explicitly lists,
 	// including models whose ids don't name Jev.
 	Decides bool `json:",omitempty"`
@@ -640,6 +655,9 @@ func loadGen() (map[string]mdProvider, int) {
 					// deepinfra/…, xiaomi/…) votes its levels once, not
 					// once a host.
 					vote := func(who, own, by string, x mdModel) {
+						if routerIDs[who] {
+							return
+						}
 						spelt[who]++
 						if x.Name != "" && x.Name != own && x.Name != who {
 							if named[who] == nil {
@@ -1319,6 +1337,18 @@ func Knows(id string) bool {
 	return ContextOf(id) > 0 || len(EffortsOf(id)) > 0 || Thinks(id)
 }
 
+// IsOneOf reports whether the model of this id is one of ids (bare,
+// lowercase), matched as ContextOf and EffortsOf match it: by the id, a
+// relay's rename (codex-gpt-6.1-sol, a tag in brackets), another spelling,
+// or the model the user said it is the same as (UserSame). It is how a
+// rule kept for some models by name reaches them on a relay that renames
+// them.
+func IsOneOf(id string, ids map[string]bool) bool {
+	load()
+	_, ok := lookup(id, ids)
+	return ok
+}
+
 // KnowsAsWritten is Knows without another spelling (normalFor): the
 // usage report sends a model's id only when models.dev knows it as
 // written, so an id a user typed that only folds into a known one
@@ -1895,6 +1925,17 @@ func mostGiven(by map[int]int) int {
 	return best
 }
 
+// routerIDs are ids that name a vendor's router, not a model: OpenRouter's
+// openrouter/auto, model-oracle-ai's auto, Kilo's kilo-auto/free and the
+// rest are each their own, and a plugin's "auto" (豆包工作 picks Doubao's
+// model) is none of them. Without a path they were taken for one model,
+// and every provider's "auto" was given that model's levels, images and
+// window: pi offered thinking levels and image input for 豆包工作's auto.
+// What a provider's own list says of its router (ListedBy) still holds.
+// Only ids no vendor gives a model are here: "fast" and "balanced" are
+// trustedrouter's and Kilo's routers, but a vendor may name a model so.
+var routerIDs = map[string]bool{"auto": true, "default": true, "free": true}
+
 // bareID is a model's id without the vendor's prefix, lowercase.
 func bareID(id string) string {
 	id = strings.ToLower(id)
@@ -1918,6 +1959,38 @@ func unprofiled(b string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// The APIs a model Serves is made for.
+const (
+	ServesEmbedding     = "embedding"
+	ServesRerank        = "rerank"
+	ServesSpeech        = "speech"
+	ServesTranscription = "transcription"
+)
+
+// ServesOf is the API a model's id says it is made for, other than chat,
+// images or video: "" for any other model. Read from the id alone, as
+// vendors' OpenAI-style lists say no more (text-embedding-3-small,
+// bge-reranker-v2-m3, tts-1, gpt-4o-mini-tts, whisper-1,
+// gpt-4o-transcribe). Voyage AI makes embedding models alone, and names
+// them voyage-* (voyage-4, voyage-code-3), with no "embed" in the id.
+func ServesOf(id string) string {
+	id = strings.ToLower(id)
+	if i := strings.LastIndex(id, "/"); i >= 0 {
+		id = id[i+1:]
+	}
+	switch {
+	case strings.Contains(id, "rerank"):
+		return ServesRerank
+	case strings.Contains(id, "embed") || strings.HasPrefix(id, "bge-") || strings.HasPrefix(id, "voyage-"):
+		return ServesEmbedding
+	case strings.Contains(id, "whisper") || strings.Contains(id, "transcribe"):
+		return ServesTranscription
+	case strings.HasPrefix(id, "tts-") || strings.Contains(id, "-tts"):
+		return ServesSpeech
+	}
+	return ""
 }
 
 func textModel(m mdModel) bool {
@@ -1974,15 +2047,29 @@ func DrawsID(id string) bool {
 
 // ImagesAPI is whether a model draws on an images API rather than answering
 // in chat with pictures: gpt-image, dall-e, imagen, flux, seedream… — not
-// gemini-*-image or gpt-5-image, which chat.
+// gemini-*-image or gpt-5-image, which chat. iFlytek Loomy's Hy-Image
+// generators (Hy-Image-3.5-preview) draw on its images API too (#4913).
 func ImagesAPI(id string) bool {
 	id = strings.ToLower(id)
-	for _, w := range []string{"gpt-image", "chatgpt-image", "dall-e", "imagen", "imagine", "qwen-image", "wanx", "wan2", "seedream", "cogview", "flux", "stable-diffusion", "sdxl", "kolors", "hidream", "sensenova-u1"} {
+	for _, w := range []string{"gpt-image", "chatgpt-image", "dall-e", "imagen", "imagine", "qwen-image", "wanx", "wan2", "seedream", "cogview", "flux", "stable-diffusion", "sdxl", "kolors", "hidream", "sensenova-u1", "hy-image"} {
 		if strings.Contains(id, w) {
 			return true
 		}
 	}
 	return false
+}
+
+// FilmsID is whether a model's id names one that makes videos, for a model
+// whose list says nothing of a kind: OpenAI's sora-2 and sora-2-pro are
+// made at its OpenAI-shaped videos API, which the gateway speaks, but
+// textModel counts their ids out of the chat models, and a list that
+// marks no kind left them unlisted at all — never offered to talk to, and
+// never marked a video model in the provider's editor (#4954). The other
+// video families keep the faces their own APIs are asked on: Ark's
+// Seedance at its tasks (gateway arkVideoModel), a MiniMax key's H3
+// (video_minimax.go), and a model the user says makes videos (#1399).
+func FilmsID(id string) bool {
+	return strings.Contains(strings.ToLower(id), "sora")
 }
 
 // PointsToImagesAPI is whether a vendor's refusal of a chat request names

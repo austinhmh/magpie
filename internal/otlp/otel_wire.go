@@ -50,7 +50,7 @@ func otelAttributes(r Record) []otelAttribute {
 
 func otelEnvelope(signal string, data any) map[string]any {
 	return map[string]any{"resource" + signal: []any{map[string]any{
-		"resource":       map[string]any{"attributes": []otelAttribute{otelString("service.name", "magpie")}},
+		"resource":       map[string]any{"attributes": otelResourceAttributes()},
 		"scope" + signal: []any{map[string]any{"scope": map[string]any{"name": "github.com/yetone/magpie"}, map[string]string{"Spans": "spans", "Metrics": "metrics"}[signal]: data}},
 	}}}
 }
@@ -133,7 +133,9 @@ func (e *otelExporter) traces(items []otelItem) any {
 				if r.RouteID != 0 {
 					a = append(a, otelInt("magpie.route.id", r.RouteID))
 				}
-				if r.Status >= 400 {
+				// a request its agent canceled is no failure
+				// (Record.Canceled): its status code alone says 499
+				if r.Failed() {
 					a = append(a, otelString("error.type", strconv.Itoa(r.Status)))
 				}
 				a = append(a, otelString("langfuse.observation.type", "span"))

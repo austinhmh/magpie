@@ -14,7 +14,8 @@ function fixture() {
     { ...base, id: "antigravity", name: "Antigravity", keyList: [], account: { agent: "antigravity", agentName: "Antigravity", user: logins[0].user, logins } },
     { ...base, id: "relay", name: "Relay", keyList: Array.from({ length: 5 }, (_, i) => ({ id: `key-${i + 1}`, name: `Key ${i + 1}`, masked: `test-key-${i + 1}`, active: i === 0, on: i !== 2 })) },
   ], presets: [], excluded: [], gateway: { running: false, window: true } };
-  const state = { agents: ["alpha", "beta", "gamma"].map(id => ({ id, name: id, icon: "generic", path: "/fixture", fields: [] })), profiles: [], settings: { lang: "en", theme: "light" } };
+  // Get started put away: under it a new user's agents are folded
+  const state = { agents: ["alpha", "beta", "gamma"].map(id => ({ id, name: id, icon: "generic", path: "/fixture", fields: [] })), profiles: [], settings: { lang: "en", theme: "light", guideHidden: true } };
   const f = { providers, state, posted: [], failNext: false };
   const items = p => p.account ? p.account.logins : p.keyList;
   const id = (p, item) => p.account ? item.user : item.id;
@@ -139,7 +140,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.reload(); await drawn(page);
         await checkFirst(page, f, id);
         const wanted = (await ids(page))[1];
-        await rows(page).nth(1).getByRole("button", { name: "Make first", exact: true }).click();
+        // Smart and Least used first go by a subscription's quota, so Make
+        // first says the order only settles ties there; a relay's keys keep
+        // their order under Smart, never that the gateway uses it
+        // first (CryptoSarom on X)
+        const make = rows(page).nth(1).getByRole("button", { name: "Make first", exact: true });
+        const title = await make.getAttribute("title") || "";
+        assert.equal(/still goes by each account's quota/.test(title), id !== "relay" && (mode === "" || mode === "usage"), `${id} ${mode || "smart"}: ${title}`);
+        await make.click();
         await page.waitForFunction(ref => document.querySelector(".accts [data-account-id]").dataset.accountId === ref, wanted);
         await checkFirst(page, f, id);
       }

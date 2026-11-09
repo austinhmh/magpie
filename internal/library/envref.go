@@ -17,6 +17,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/yetone/magpie/internal/proc"
 )
 
 // envRef is a reference as the library writes one: ${NAME}.
@@ -175,6 +177,13 @@ func (f *mcpFile) refsOf() envSyntax {
 		// Kiro expands ${VARIABLE_NAME} in mcp.json as it reads it
 		// (kiro.dev/docs/mcp/configuration), the ones its Mcp Approved Env
 		// Vars setting approves
+		return envSyntax{refDollar, refDollar}
+	case fmtLiveAgent:
+		// K-brain, LiveAgent's engine, reads ${NAME} (and $NAME,
+		// ${NAME:-default}) in a server's env and headers as it starts it,
+		// and leaves out one whose variable is unset (internal/config/
+		// secret.go ResolveEnvMapContext, ResolveHeaderContext; internal/
+		// mcp/manager.go defaultTransport, K-brain 507f560)
 		return envSyntax{refDollar, refDollar}
 	}
 	// None: Claude Desktop gives a command its env as written and only
@@ -565,35 +574,46 @@ func codexEnvVars(v any) []string {
 	return out
 }
 
-// expandRef is a value with each reference replaced by the variable's value
-// in magpie's own environment, for magpie to reach the server itself; the
-// names it found unset are given too.
-func expandRef(v string) (string, []string) {
-	var unset []string
-	out := envRef.ReplaceAllStringFunc(v, func(m string) string {
-		name := m[2 : len(m)-1]
-		x, ok := os.LookupEnv(name)
-		if !ok && !slices.Contains(unset, name) {
-			unset = append(unset, name)
-		}
-		return x
-	})
-	return out, unset
-}
+// loginVars is the reader of what a terminal has for variables magpie's
+// own environment lacks (proc.LoginVars); a var for tests.
+var loginVars = proc.LoginVars
 
-// expandAll is m with every value expanded (expandRef), and the variables
-// found unset, sorted.
+// expandAll is m with every reference replaced by the variable's value,
+// for magpie to reach the server itself, and the variables set nowhere,
+// sorted. A variable is magpie's own, else the login shell's (the
+// registry's on Windows): a magpie opened from the Finder has none of the
+// profile's, and a server whose token was exported in .zshrc showed no
+// tools (Cyrus on Discord). The value is only in what is returned: never
+// in library.json, an agent's file, magpie's environment or a log.
 func expandAll(m map[string]string) (map[string]string, []string) {
+	vals := map[string]string{}
+	var missing []string
+	for _, v := range m {
+		for _, n := range refNames(v) {
+			if _, have := vals[n]; have || slices.Contains(missing, n) {
+				continue
+			}
+			if x, ok := os.LookupEnv(n); ok {
+				vals[n] = x
+			} else {
+				missing = append(missing, n)
+			}
+		}
+	}
 	var unset []string
-	out := make(map[string]string, len(m))
-	for k, v := range m {
-		x, miss := expandRef(v)
-		out[k] = x
-		for _, n := range miss {
-			if !slices.Contains(unset, n) {
+	if len(missing) > 0 {
+		got := loginVars(missing)
+		for _, n := range missing {
+			if x, ok := got[n]; ok {
+				vals[n] = x
+			} else {
 				unset = append(unset, n)
 			}
 		}
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = envRef.ReplaceAllStringFunc(v, func(r string) string { return vals[r[2:len(r)-1]] })
 	}
 	slices.Sort(unset)
 	return out, unset

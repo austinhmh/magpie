@@ -61,6 +61,16 @@ this computer's values for a provider it has, and brings a new one without
 `KeepLoginAs`, an account signed in on the other computer; `hashes` blanks
 all three (`TestMirrorKeepsKeepLogin`, `TestKeepLoginIsNoChange`).
 
+A Remote magpie's **Use it anyway** (`KeepSelf`) is kept the same way. Sync
+carries a Remote magpie provider to the computer it names (hanslin1666 on
+Discord: B uses A through one, and on A it points at A), and there it is
+found to be this magpie and left out unless kept (see
+[providers and accounts](providers-accounts.md)). Whether it is this magpie
+is about one computer only, so it is kept in `remote-self.json`, which no
+backup or sync carries, and `KeepSelf` is kept by `Mirror` and `Restore`
+(false for a provider new here) and blanked by `hashes`
+(`TestMirrorKeepsKeepSelf`, `TestKeepSelfIsNoChange`).
+
 The agents part keeps a computer's own pick the same way, field by field
 (hayden4608 on Discord: two computers on one GitHub sync, each wanting its own
 Codex model, set each other's on every sync). Each field a sync changes here
@@ -79,6 +89,25 @@ values in and clears `Own`. A Restore brings everything and clears it too. The
 three maps survive a change of server (`TestOwnModelStaysOnEachComputer`,
 `TestNewPicksStillGoBothWays`, `sync-own-fields.test.cjs`).
 
+A whole agent's picks can be kept to one computer on purpose, as an MCP
+server can (chenxiang0010 on Discord): the Agents row's menu has **Don't sync
+picks to your other computers** (`POST /api/agents/here`; the row says
+"Not synced"; it said "This computer only", which read as sharing, bin.90
+on Discord), which adds the agent's id to
+`Settings.AgentsHere`, a computer's own kept by `KeepOwn` and by a save of
+the Settings page (`settingsapi.Apply`). It is off by default, so an upgrade
+changes no pick anywhere. For each such agent, `withHere` adds `<id>.*` to
+the own set (`isOwn` matches every field of it), so a sync neither pushes its
+fields nor brings the server's in, a Restore from the server leaves them,
+and `backup.Restore` skips the agent in a backup file. sync-state.json
+records the list as of the last sync (`Here`): the hashes before a sync use
+it and those after use the current list, so turning it on or off is no
+change on either side, and the list changing forces the sync past its early
+returns. Turned off, the next pick here goes up again; the other agents
+sync both ways throughout. A kept agent is not listed under Kept on this
+computer, which is the implicit own fields only (`TestAgentHereThroughSync`,
+`TestAgentsHereIsThisComputers`, `agent-here.test.cjs`).
+
 Sharing turned on at one computer never turns it on or off at another
 (Lullaby on Discord). A backup restored onto a new computer leaves sharing as
 that computer has it, off on a fresh one: sharing opens the gateway to the
@@ -96,7 +125,14 @@ Each operation holds the sync lock, so configuration changes cannot race a
 sync's state write.
 
 A first computer creates a remote backup. Another computer joining takes
-the remote setup and keeps displaced local parts in its sync folder.
+the remote setup and keeps displaced local parts in its sync folder. A
+part the file holds nothing of its own in (`unset`: no providers or
+routing groups, the default settings, no profiles, an empty library) is
+the folder never having had one, not a removal: on a join, a computer
+with that part set up keeps it and sends it up (#5642: an empty computer
+that synced first emptied the next one's providers and groups). After the
+join an emptied part is a removal and spreads as before
+(`TestSyncEmptyFirstKeepsLaterSetups`).
 Subsequent syncs compare each part with the hashes from the previous sync:
 local-only changes go up, remote-only changes come down, and a part changed
 on both sides keeps the newer version while retaining the replaced copy.
@@ -125,6 +161,117 @@ configurations and clients. Only the active server is used. Empty credential
 fields reuse a saved credential only for its matching account; GitHub
 restricts reuse to the same owner/repo. Branch or prefix changes within that
 repository can keep the token. The branch is part of the sync state key.
+
+## Backups by themselves
+
+[`auto.go`](../../internal/backup/auto.go) writes the setup into a folder on
+this computer on a schedule (jwaitq on Discord). `RunAuto` runs while the
+gateway serves (`gateway.WhileServing`, wired in `internal/cli/main.go`) and
+calls `AutoTick` every few minutes; tests call `AutoTick` with their own
+clock.
+
+- **Config:** `autobackup.json` beside the settings holds only what the user
+  set (`Off`, `Hours`, `Keep`, `Dir`). Missing means on, every 24 hours,
+  keeping 7, in `settings.Dir()/auto-backups` (not `backups`, which the
+  library prunes). A config that can't be read or parsed makes no backup and
+  shows the error; it is never read as the defaults.
+- **Content:** `Collect(false, app)`, the manual export without keys, with
+  the proxy settings blanked too, since nothing seals it: no passphrase is
+  there on a schedule. Files are 0600 in a 0700 folder.
+- **Format:** `magpie-YYYYMMDD-HHMMSS[-n]-{auto,restore}.json`, holding the
+  bundle and its sha256. Each is written to a `.magpie-backup-*.tmp` and
+  renamed into place. A file whose sum doesn't match, a temp file or a name
+  that doesn't match is never listed, restored or pruned.
+- **Schedule:** a backup is due `Hours` after the newest, so a restart
+  doesn't make one early; one whose bundle equals the newest's is not
+  written. After a write the oldest `-auto` files past `Keep` are removed
+  (and `-restore` ones past `Keep` after a restore), with its own temp files
+  over an hour old; other files in the folder are never touched.
+- **Restore:** `AutoRestore(name)` first writes a `-restore` backup of what
+  is here (and stops if that fails), then `Restore(bundle, All)`, which is
+  additive: providers added since stay, each keeps its local key. Restoring
+  the `-restore` file undoes it.
+- **API:** `GET /api/autobackup`; `POST /api/autobackup/{set,choose,now,
+  reveal,restore}`. `set` changes only the fields sent; `dir ""` is the
+  default folder. Settings draws it under Sync's Export and Import from the
+  lazy [`autobackup.js`](../../internal/gui/assets/autobackup.js).
+  Its Versions row says how many and the newest (a state, kept in sight
+  where Settings' hints rest out of it) and folds the versions, each with
+  Restore…, until its name or that line is clicked; the fold is kept over
+  redraws for the window's life (chen2652 on Discord,
+  `auto-backup.test.cjs`). The status's `inside` says the folder is `settings.Dir()` or in it (letter
+  case aside off Linux), the default included; Settings then says under the
+  folder that a reinstalled system or a lost disk takes the backups too, and
+  to pick one on another disk or a cloud drive's (two_2025. on Discord,
+  magpie on C:). Keeping everything elsewhere is portable mode
+  (`internal/appdir`); docs/start's `#data-folder` gives both
+  (`TestAutoInsideMagpiesFolder`, `auto-backup.test.cjs`).
+- **Sign-ins:** off unless picked (`SignIns`, with `Passphrase`); see
+  [Sign-ins, when picked](#sign-ins-when-picked).
+
+## Sign-ins, when picked
+
+A sign-in (a subscription account in logins.json, Codex's auth.json, a
+plugin's sign-in in plugin-auth.json) stays on its computer unless the user
+picks it, in each place on its own: Sync's **Sign-ins** tick, Export's
+**With the sign-ins**, and Back up by itself's **Sign-ins in backups**. All
+three are off by default, so an upgrade carries nothing new (qianxunji and
+curtinp118 on Discord: a VPS restored from a backup had to sign in to every
+subscription again). Import's **Bring in the sign-ins too** is on, since a
+file has them only when it was made with them. Each place says beside the
+switch that anyone with the file and the passphrase can use those accounts.
+
+- **What goes:** [`provider.CollectSignIns`](../../internal/provider/signins_carry.go)
+  takes magpie's own copies only (`carried`): not an agent's own account
+  (`own`), not one in an agent's own home (`Home`), not a hidden row, not a
+  `plugin:` row, not a retired built-in. Codex's live auth.json goes as its
+  own record. Plugins' sign-ins come from [`plugin.CarriedAuth`](../../internal/plugin/carry.go).
+  Each record has an id that names the account (agent, lower-case email and
+  organisation; or the account key), its time of renewal and a hash; ids two
+  rows share are left out on both sides, as no one can tell which is which.
+- **Never carried:** a plugin's sign-in whose vendor spends a refresh
+  token once. Two computers holding one copy race to renew it, and the
+  vendor turns the loser away for good with no newer copy anywhere
+  (#5583, skalitz-wolf). Such a plugin says so with its auth hook's
+  `rotating` (`Provider.Rotating`); MiniMax Code and Qoder are known to
+  (`rotatesKnown`). `CollectSignIns` leaves them out, and `records` leaves
+  out one an older file carried, so a sync neither sends nor takes one
+  and a Restore writes none. Each computer signs in to them itself
+  (`TestCollectSignInsLeavesARotatingSignInOut`,
+  `TestKnownRotatingSignInsStayWithNoPluginListed`).
+- **Sealed:** a backup or export seals them with the rest of the file. An
+  automatic backup, which has no passphrase on a schedule, seals them
+  alone (`SealData`) with the passphrase asked for as they are turned on,
+  kept in autobackup.json (0600) beside the settings and never sent in the
+  view (`Passphrase` says only that one is set). A backup whose sign-ins
+  another passphrase sealed restores without them (`SignInsLocked`). Sync's
+  file is sealed with sync's passphrase; nothing reaches the server in the
+  clear (`TestSyncSignIns`, `TestExportCarriesSignInsWhenAskedSealed`,
+  `TestAutoBackupSignInsSealedAndDeduped`).
+- **Restore and import** ([`RestoreSignIns`](../../internal/provider/signins_carry.go))
+  add an account missing here and update one only when the incoming copy
+  was renewed later. Nothing here is removed. Before writing over a row it
+  finds every row that could be the same account (same login, same refresh
+  token, same id): with none it adds, with more than one it keeps them all,
+  and with one it keeps it when it isn't magpie's own copy, is held, or is
+  the account the agent itself is signed in with. Codex's auth.json is
+  written (temp and rename, 0600) only where Codex is signed out
+  (`TestRestoreSignInsNeverWritesAnOlderTokenOver`,
+  `TestRestoreSignInsLeavesAnAmbiguousAccount`,
+  `TestRestoreSignInsSignsCodexInOnlyWhereSignedOut`).
+- **Sync** merges per record against the hashes of the last sync
+  (`SyncState.SignIns`, [`MergeSignIns`](../../internal/provider/signins_carry.go)):
+  the later renewal wins; a record one side removed is removed on the other
+  only when that side still has it as of the last sync; otherwise the side
+  that changed since wins, this computer when both did. `ApplySignIns`
+  checks each row's hash again before it writes, so a renewal in between
+  is kept. A computer with the tick off sends no sign-ins, so the others
+  remove nothing for it; turning it off, a Restore or a replaced server
+  file clears the record of the last sync. An account used on two computers
+  can be signed out on one when the other renews its refresh token, and the
+  form says so (`TestMergeSignInsTheLaterRenewedStays`,
+  `TestMergeSignInsRemovedOnlyWhenTheOtherSideRemovedIt`,
+  `TestApplySignInsKeepsWhatChangedSinceTheMerge`, `sync-signins.test.cjs`).
 
 ## GitHub constraints and errors
 
@@ -223,6 +370,12 @@ has no list and keeps this computer's; an empty list takes them out. A
 library with none hashes as it did before, so upgrading syncs nothing
 (`TestSyncSubagents`, `TestNoSubagentsHashAsBefore`,
 `TestBackupFileCarriesSubagents`).
+
+The hooks go the same way (`library.Bundle.Hooks`): each computer writes
+them into its agents beside the user's own hooks and records its own
+entries, an older bundle with no list keeps this computer's, and a library
+with none hashes as before (`TestSyncHooks`, `TestNoHooksHashAsBefore`,
+`TestBackupFileCarriesHooks`).
 
 ## Verification
 

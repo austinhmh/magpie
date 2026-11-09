@@ -214,13 +214,21 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
 // A window of the reader's own (#1860, MrMengJ: 200K put in, and 250K or
 // 300K wanted for fewer compactions): each window's picker lists every
-// value the replay tried, with what it spends past the leanest and about
-// how many compactions it would have made, in the app's own menu (no native
+// value the replay tried, with what it spends against the setting now
+// (hayden4608 on Discord: against the leanest, the window one had set
+// read as costing more than itself, and every other as more), "Fewest
+// tokens" beside the leanest's, and about how many compactions it would
+// have made, in the app's own menu (no native
 // select), inside a phone's width; a pick puts it in and Undo stays. The
 // row already at the advice keeps its picker. No click scrolls the page.
-const pickHead = { en: "Compact at · estimated from your calls of the range", zh: "压缩阈值 · 按这段时间你的调用估算", "zh-TW": "壓縮閾值 · 依這段時間你的呼叫估算", ja: "コンパクトする値 · この期間の呼び出しからの見積もり", de: "Kompaktieren bei · geschätzt aus deinen Aufrufen im Zeitraum" };
-const note250 = { en: "+270M tokens (+27%) · about 36 compactions", zh: "多花 270M Token（+27%） · 约压缩 36 次", "zh-TW": "多花 270M Token（+27%） · 約壓縮 36 次", ja: "270M トークン多い（+27%） · コンパクト約 36 回", de: "+270M Tokens (+27%) · etwa 36 Kompaktierungen" };
-const note160 = { en: "Fewest tokens · about 56 compactions", zh: "最省 Token · 约压缩 56 次", "zh-TW": "最省 Token · 約壓縮 56 次", ja: "トークン最少 · コンパクト約 56 回", de: "Wenigste Tokens · etwa 56 Kompaktierungen" };
+const pickHead = { en: "Compact at · against the setting now, from your calls of the range", zh: "压缩阈值 · 与当前设置相比，按这段时间你的调用估算", "zh-TW": "壓縮閾值 · 與目前設定相比，依這段時間你的呼叫估算", ja: "コンパクトする値 · 現在の設定との比較、この期間の呼び出しからの見積もり", de: "Kompaktieren bei · verglichen mit der aktuellen Einstellung, geschätzt aus deinen Aufrufen im Zeitraum" };
+// 300K is set: 1.42e9 tokens; 250K 1.27e9, 160K 1.0e9
+const note300 = { en: "Your setting now · about 30 compactions", zh: "当前设置 · 约压缩 30 次", "zh-TW": "目前設定 · 約壓縮 30 次", ja: "現在の設定 · コンパクト約 30 回", de: "Aktuelle Einstellung · etwa 30 Kompaktierungen" };
+const note250 = { en: "−150M tokens (−11%) · about 36 compactions", zh: "少花 150M Token（−11%） · 约压缩 36 次", "zh-TW": "少花 150M Token（−11%） · 約壓縮 36 次", ja: "150M トークン少ない（−11%） · コンパクト約 36 回", de: "−150M Tokens (−11%) · etwa 36 Kompaktierungen" };
+const note160 = { en: "−420M tokens (−30%) · Fewest tokens · about 56 compactions", zh: "少花 420M Token（−30%） · 最省 Token · 约压缩 56 次", "zh-TW": "少花 420M Token（−30%） · 最省 Token · 約壓縮 56 次", ja: "420M トークン少ない（−30%） · トークン最少 · コンパクト約 56 回", de: "−420M Tokens (−30%) · Wenigste Tokens · etwa 56 Kompaktierungen" };
+const note250After = { en: "Your setting now · about 36 compactions", zh: "当前设置 · 约压缩 36 次", "zh-TW": "目前設定 · 約壓縮 36 次", ja: "現在の設定 · コンパクト約 36 回", de: "Aktuelle Einstellung · etwa 36 Kompaktierungen" };
+// once 250K is set, 300K is said against it: more
+const note300After = { en: "+150M tokens (+12%) · about 30 compactions", zh: "多花 150M Token（+12%） · 约压缩 30 次", "zh-TW": "多花 150M Token（+12%） · 約壓縮 30 次", ja: "150M トークン多い（+12%） · コンパクト約 30 回", de: "+150M Tokens (+12%) · etwa 30 Kompaktierungen" };
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(`${engine}: a window of the reader's own, with what it costs`, async (t) => {
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
@@ -267,6 +275,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(await menu.locator(".pm-item").count(), 20);
         const item = (v) => menu.locator(".pm-item", { has: page.locator(".pm-name", { hasText: new RegExp("^" + v + "$") }) });
         assert.match(await item("300K").getAttribute("class"), /\bon\b/);
+        assert.equal(await item("300K").locator(".pm-note").innerText(), note300[lang]);
         assert.equal(await item("250K").locator(".pm-note").innerText(), note250[lang]);
         assert.equal(await item("160K").locator(".pm-note").innerText(), note160[lang]);
         const box = await menu.boundingBox();
@@ -282,6 +291,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator(".ctx-tune-row").nth(0).locator(".ctx-tune-pick").click();
         await menu.waitFor();
         assert.match(await item("250K").getAttribute("class"), /\bon\b/);
+        assert.equal(await item("250K").locator(".pm-note").innerText(), note250After[lang]);
+        assert.equal(await item("300K").locator(".pm-note").innerText(), note300After[lang]);
         await page.keyboard.press("Escape");
         assert.equal(posts.length, 1, "closing the menu puts nothing in");
         await ctx.close();
@@ -362,7 +373,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 // compaction took, the wait at the advice against the window now, and the
 // cheaper window it passed over for waiting longer; the caveat no longer
 // says tokens only, and each window in the picker says its wait beside its
-// tokens, "Fewest tokens" on the cheapest one, not the advice. A row whose
+// tokens against the window now, "Fewest tokens" on the cheapest one, not
+// the advice. A row whose
 // compactions aren't timed reads as before. In both engines, every
 // language, a phone's width and a desk's.
 const timedCurve = () => {
@@ -403,8 +415,9 @@ const waitCaveat = {
   ja: "トークンと待ち時間だけの見積もりです。コンパクトのあとエージェントが作業をどれだけ保てるかは測っていません。しきい値が低いほどコンパクトの回数は増えます。",
   de: "Nur Tokens und Wartezeit: Wie gut der Agent die Aufgabe nach einer Kompaktierung behält, misst das nicht. Je niedriger die Schwelle, desto öfter wird kompaktiert.",
 };
-const waitNote100 = { en: "Fewest tokens · about 90 compactions · about 1h 54m waiting", zh: "最省 Token · 约压缩 90 次 · 约等 1 小时 54 分", "zh-TW": "最省 Token · 約壓縮 90 次 · 約等 1 小時 54 分", ja: "トークン最少 · コンパクト約 90 回 · 待ち約 1 時間 54 分", de: "Wenigste Tokens · etwa 90 Kompaktierungen · etwa 1 Std. 54 Min. Wartezeit" };
-const waitNote240 = { en: "+70M tokens (+7%) · about 38 compactions · about 48m waiting", zh: "多花 70M Token（+7%） · 约压缩 38 次 · 约等 48 分钟", "zh-TW": "多花 70M Token（+7%） · 約壓縮 38 次 · 約等 48 分鐘", ja: "70M トークン多い（+7%） · コンパクト約 38 回 · 待ち約 48 分", de: "+70M Tokens (+7%) · etwa 38 Kompaktierungen · etwa 48 Min. Wartezeit" };
+// 120K is set: 1.04e9 tokens; 100K 0.95e9, 240K 1.02e9
+const waitNote100 = { en: "−90M tokens (−9%) · Fewest tokens · about 90 compactions · about 1h 54m waiting", zh: "少花 90M Token（−9%） · 最省 Token · 约压缩 90 次 · 约等 1 小时 54 分", "zh-TW": "少花 90M Token（−9%） · 最省 Token · 約壓縮 90 次 · 約等 1 小時 54 分", ja: "90M トークン少ない（−9%） · トークン最少 · コンパクト約 90 回 · 待ち約 1 時間 54 分", de: "−90M Tokens (−9%) · Wenigste Tokens · etwa 90 Kompaktierungen · etwa 1 Std. 54 Min. Wartezeit" };
+const waitNote240 = { en: "−20M tokens (−2%) · about 38 compactions · about 48m waiting", zh: "少花 20M Token（−2%） · 约压缩 38 次 · 约等 48 分钟", "zh-TW": "少花 20M Token（−2%） · 約壓縮 38 次 · 約等 48 分鐘", ja: "20M トークン少ない（−2%） · コンパクト約 38 回 · 待ち約 48 分", de: "−20M Tokens (−2%) · etwa 38 Kompaktierungen · etwa 48 Min. Wartezeit" };
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(`${engine}: timed compactions put their wait beside the tokens`, async (t) => {
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
@@ -882,6 +895,132 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await go.waitFor();
         assert.equal(await go.innerText(), use170[lang]);
         assert.deepEqual(posts.map((b) => [b.path, b.agent, b.knob, b.value]), [["/api/tune/apply", "codex", "compact", "170000"], ["/api/tune/undo", "codex", "compact", ""]]);
+        await ctx.close();
+      });
+    }
+    assert.deepEqual(errors, []);
+  });
+}
+
+// a setting tune put in stays on the card with its Undo when the range has
+// too few calls to advise on, or none (linkaww on Discord: Claude Code's
+// cache put at 1 hour, and Today showed no way back to 5 minutes)
+const few = { en: "Not enough calls in this range to tune on", zh: "这段时间的调用太少，还算不出建议", "zh-TW": "這段時間的呼叫太少，還算不出建議", ja: "この期間は呼び出しが少なく、まだ調整できません", de: "Zu wenige Aufrufe in diesem Zeitraum zum Abstimmen" };
+for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+  test(`${engine}: a setting put in keeps its Undo with too few calls`, async (t) => {
+    const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+    const errors = [];
+    t.after(async () => {
+      if (errors.length) console.log(errors);
+      await browser.close();
+    });
+    for (const lang of Object.keys(few)) for (const [width, height] of [[360, 760], [1100, 760]]) {
+      await t.test(`${lang}, ${width}x${height}`, async () => {
+        const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce" });
+        await ctx.addInitScript(() => { try { localStorage.setItem("magpie.usageTab", "context"); } catch {} });
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
+        page.on("pageerror", (e) => errors.push(e.message));
+        const posts = [];
+        const base = serve(lang, posts);
+        let put = true;
+        await page.route("**/*", async (r) => {
+          const p = new URL(r.request().url()).pathname;
+          if (p === "/api/tune/undo") put = false;
+          if (p !== "/api/tune") return base(r);
+          const advice = put ? [
+            { knob: "cache_ttl", setting: { value: "1h", source: "settings", ours: true }, few: true },
+            { knob: "compact", model: "claude-opus-5-5", setting: { value: "300000", source: "model", ours: true }, few: true },
+          ] : [];
+          return r.fulfill({ json: { days: 1, agents: put ? [{ agent: "claude", calls: 3, advice }] : [] } });
+        });
+        await page.goto("http://magpie.test/?view=usage");
+        const rows = page.locator(".ctx-tune-row");
+        await rows.first().waitFor();
+        assert.equal(await rows.count(), 2);
+        for (const i of [0, 1]) {
+          assert.equal(await rows.nth(i).locator(".ctx-tune-why").innerText(), few[lang]);
+          assert.equal(await rows.nth(i).locator("button").count(), 1, `row ${i}: Undo only`);
+          assert.equal(await rows.nth(i).locator(".ctx-tune-chart svg").count(), 0, `row ${i}: no curve`);
+          assert.doesNotMatch(await rows.nth(i).innerText(), /NaN|undefined/);
+        }
+        assert.match(await rows.nth(0).innerText(), { en: /1 hour/i, zh: /1 小时/, "zh-TW": /1 小時/, ja: /1 時間/, de: /1 Stunde/ }[lang]);
+        const over = await page.evaluate(() => {
+          const view = document.querySelector("#view-usage");
+          return view.scrollWidth > view.clientWidth + 1 ? view.scrollWidth + ">" + view.clientWidth : "";
+        });
+        assert.equal(over, "");
+        await rows.nth(0).locator("button").evaluate((b) => b.click());
+        await page.waitForFunction(() => document.querySelectorAll(".ctx-tune-row").length == 0);
+        assert.deepEqual(posts.map((p) => [p.path, p.knob]), [["/api/tune/undo", "cache_ttl"]]);
+        await ctx.close();
+      });
+    }
+    assert.deepEqual(errors, []);
+  });
+}
+
+// Claude Code's cache as this computer has it is on the card with no calls
+// read here, whoever set it (linkaww on Discord: through a Remote magpie,
+// "这里什么都没有"): the user's own 1 hour has Use 5 min, which puts in 5m;
+// nothing set reads Default, with nothing to press and no verdict
+const def = { en: "Default", zh: "默认", "zh-TW": "預設", ja: "デフォルト", de: "Standard" };
+const five = { en: /5 min/, zh: /5 分钟/, "zh-TW": /5 分鐘/, ja: /5 分/, de: /5 Min/ };
+for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+  test(`${engine}: the cache here is told with no calls, and a 1 hour of the user's goes back to 5 min`, async (t) => {
+    const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+    const errors = [];
+    t.after(async () => {
+      if (errors.length) console.log(errors);
+      await browser.close();
+    });
+    for (const lang of Object.keys(def)) for (const [width, height] of [[360, 760], [1100, 760]]) {
+      await t.test(`${lang}, ${width}x${height}`, async () => {
+        const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce" });
+        await ctx.addInitScript(() => { try { localStorage.setItem("magpie.usageTab", "context"); } catch {} });
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
+        page.on("pageerror", (e) => errors.push(e.message));
+        const posts = [];
+        const base = serve(lang, posts);
+        let main = { value: "1h", source: "settings" };
+        await page.route("**/*", async (r) => {
+          const p = new URL(r.request().url()).pathname;
+          if (p === "/api/tune/apply") main = { value: "5m", source: "settings", ours: true };
+          if (p !== "/api/tune") return base(r);
+          return r.fulfill({ json: { days: 1, agents: [{ agent: "claude", calls: 0, advice: [
+            { knob: "cache_ttl", setting: main, few: true },
+            { knob: "subagent_cache_ttl", setting: {}, few: true },
+          ] }] } });
+        });
+        await page.goto("http://magpie.test/?view=usage");
+        const rows = page.locator(".ctx-tune-row");
+        await rows.first().waitFor();
+        assert.equal(await rows.count(), 2);
+        // nothing set: Default, nothing to press, no verdict
+        const sub = rows.nth(1);
+        assert.equal(await sub.locator(".ctx-tune-val.now b").innerText(), def[lang]);
+        assert.equal(await sub.locator("button").count(), 0);
+        assert.equal(await sub.locator(".ctx-chip:visible").count(), 0);
+        assert.equal(await sub.locator(".ctx-tune-why").innerText(), few[lang]);
+        // the user's own hour: Use 5 min, no verdict
+        const one = rows.nth(0);
+        assert.match(await one.locator(".ctx-tune-val.now b").innerText(), { en: /1 hour/i, zh: /1 小时/, "zh-TW": /1 小時/, ja: /1 時間/, de: /1 Stunde/ }[lang]);
+        assert.equal(await one.locator(".ctx-chip:visible").count(), 0);
+        const go = one.locator("button");
+        assert.equal(await go.count(), 1);
+        assert.match(await go.innerText(), five[lang]);
+        for (const r of [one, sub]) assert.doesNotMatch(await r.innerText(), /NaN|undefined|—/);
+        const over = await page.evaluate(() => {
+          const view = document.querySelector("#view-usage");
+          return view.scrollWidth > view.clientWidth + 1 ? view.scrollWidth + ">" + view.clientWidth : "";
+        });
+        assert.equal(over, "");
+        await go.evaluate((b) => b.click());
+        await page.waitForFunction(() => /undo|撤销|復原|取り消す|Rückgängig/i.test(document.querySelector(".ctx-tune-row button")?.textContent || ""));
+        assert.deepEqual(posts.map((p) => [p.path, p.knob, p.value]), [["/api/tune/apply", "cache_ttl", "5m"]]);
         await ctx.close();
       });
     }

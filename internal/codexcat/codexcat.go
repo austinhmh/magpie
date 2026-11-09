@@ -21,6 +21,7 @@ import (
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
+	"github.com/yetone/magpie/internal/filememo"
 	"github.com/yetone/magpie/internal/settings"
 )
 
@@ -162,11 +163,40 @@ func TakesEffort(ms []catalog.Model, id string) string {
 		return ""
 	}
 	slug, chatgpt := strings.CutPrefix(id, "codex/")
-	if raw, ok := CacheEntries()[slug]; ok && (chatgpt || slug == id) {
-		d, _ := raw["default_reasoning_level"].(string)
+	if d, ok := cacheLevels()[slug]; ok && (chatgpt || slug == id) {
 		return d
 	}
 	return DefaultEffort(e)
+}
+
+// cacheLevels is the default_reasoning_level of each of CacheEntries'
+// models, read again only when models_cache.json changes: the window's
+// Codex effort field asks TakesEffort per model every 15s poll, and
+// reading and decoding the whole cache each time was 238 MB of what a
+// live magpie allocated in 37 minutes. Shared: read only.
+func cacheLevels() map[string]string {
+	levels, _ := filememo.Read("codex cache levels", catalog.CodexModelsCache(), func(b []byte) (map[string]string, error) {
+		var cache struct {
+			ETag   string `json:"etag"`
+			Models []struct {
+				Slug        string `json:"slug"`
+				Description string `json:"description"`
+				Level       any    `json:"default_reasoning_level"`
+			} `json:"models"`
+		}
+		if err := json.Unmarshal(b, &cache); err != nil {
+			return nil, err
+		}
+		out := map[string]string{}
+		for _, m := range cache.Models {
+			// as CacheEntries keeps them; a level that isn't a string is none
+			if m.Slug != "" && !catalog.MagpieAdded(cache.ETag, m.Slug, m.Description) {
+				out[m.Slug], _ = m.Level.(string)
+			}
+		}
+		return out, nil
+	})
+	return levels
 }
 
 // Catalog renders models as a whole models.json, for the effort this
@@ -322,7 +352,7 @@ func Entries(ms []catalog.Model, after int) []any {
 func entriesAt(ms []catalog.Model, after int, effort string) []any {
 	own := CacheEntries()
 	v1 := V1()
-	work := settings.Load()
+	work := settings.Load().ForAgent("codex")
 	autoReview := AutoReviewModel()
 	var entries []any
 	for i, m := range ms {
@@ -382,7 +412,7 @@ func entriesAt(ms []catalog.Model, after int, effort string) []any {
 			// (KimYx0207 on X). The description still ends " via magpie",
 			// which is how its entry is told from Codex's own
 			// (catalog.MagpieAdded)
-			e.Description = m.Name + " (text only: Accepts images is in its provider's Names & levels in magpie) via magpie"
+			e.Description = m.Name + " (text only: Accepts images is in its provider's Model settings in magpie) via magpie"
 		}
 		if c := m.Context; c > 0 {
 			// the model's or its provider's threshold, else the one for
@@ -426,7 +456,10 @@ func entriesAt(ms []catalog.Model, after int, effort string) []any {
 			if e.MultiAgent == "" {
 				e.MultiAgent = "v2"
 			}
-			e.DetailOriginal = m.Images
+			// The original detail only on DeepSeek's own API: a relay's
+			// may refuse it, as OpenCode Go does with 400 "invalid image
+			// detail" (qiu_eth)
+			e.DetailOriginal = m.Images && strings.HasPrefix(m.ID, "deepseek/")
 		}
 		for _, ef := range m.Efforts {
 			e.Efforts = append(e.Efforts, level{Effort: ef})
@@ -1102,6 +1135,22 @@ func listedEntry(m catalog.Model, priority int, work settings.Settings, autoRevi
 			}
 		}
 	}
+	// every level says its description: Codex 0.166 fails the whole
+	// catalog on one without the field (#5024), so a level the vendor
+	// listed without one — kept as it wrote it, or made for an effort of
+	// the user's the vendor doesn't — says the effort's display name
+	levels, _ := e["supported_reasoning_levels"].([]any)
+	for _, l := range levels {
+		o, _ := l.(map[string]any)
+		if o == nil {
+			continue
+		}
+		if _, ok := o["description"].(string); ok {
+			continue
+		}
+		ef, _ := o["effort"].(string)
+		o["description"] = effortLabel(ef)
+	}
 	// images, where the user's say (or magpie describing them) differs
 	if in, ok := e["input_modalities"].([]any); ok {
 		has := slices.Contains(in, any("image"))
@@ -1121,6 +1170,19 @@ func listedEntry(m catalog.Model, priority int, work settings.Settings, autoRevi
 		e["auto_review_model_override"] = m.ID
 	}
 	return e, true
+}
+
+// effortLabels are the reasoning efforts' display names, as the pickers say
+// them (T3 Code's labels, internal/agent/t3code.go).
+var effortLabels = map[string]string{"none": "None", "minimal": "Minimal", "low": "Low", "medium": "Medium", "high": "High", "xhigh": "Extra High", "max": "Max", "ultra": "Ultra"}
+
+// effortLabel is the display name of an effort, the effort itself when it
+// has none.
+func effortLabel(ef string) string {
+	if l, ok := effortLabels[ef]; ok {
+		return l
+	}
+	return ef
 }
 
 // Window has one of Codex's own entries say a context window of n tokens

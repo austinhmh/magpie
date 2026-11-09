@@ -164,12 +164,19 @@ const codexDaemonRecheck = 5 * time.Second
 
 // noteCodexSwitch remembers, when Codex's account changes from one to
 // another, the app-server left running on the one before.
-func noteCodexSwitch(from, to string) {
+func noteCodexSwitch(from, to string) { noteCodexSwitchBy(from, to, false) }
+
+// noteCodexSwitchBy is noteCodexSwitch, byMagpie saying magpie made the
+// switch by itself (switchLoginBy).
+func noteCodexSwitchBy(from, to string, byMagpie bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	// the Codex app's app-servers are found and restarted on
-	// KeepCodexAppOnItsProvider's own look, whatever this listing finds
-	codexAppAccountSwitched()
+	// KeepCodexAppOnItsProvider's own look, whatever this listing finds.
+	// A switch by hand off an account known held is one off a used-up
+	// account, as SwitchWhenSpent's is: a turn left open on it when quota
+	// ran out mid-turn is restarted past once quiet (xiaoq6285 on Discord)
+	codexAppSwitched(codexHeldKnown(from), byMagpie)
 	ps, err := listProcesses(ctx)
 	known := err == nil
 	codexDaemonMu.Lock()
@@ -613,4 +620,36 @@ func CodexPIDs(ctx context.Context) []int {
 		}
 	}
 	return pids
+}
+
+// StopIdleCodexDaemon stops Codex's app-server daemon for the Codex home
+// magpie signs Codex in through, when it runs with no codex session on it,
+// and says whether it did. An update of Codex by npm on Windows asks it
+// first (agent.UpdateCLI): the daemon, which has no idle exit and which
+// magpie restarts (KeepCodexDaemonCurrent), holds the package's codex.exe,
+// which npm can't remove while it runs (EPERM), and the update stopped
+// partway. The next codex started starts it again. One with sessions on it
+// is left: they hold codex.exe too.
+func StopIdleCodexDaemon(ctx context.Context) (bool, error) {
+	home := codexHome()
+	ps, err := listProcesses(ctx)
+	if err != nil {
+		return false, err
+	}
+	if findCodexDaemon(ps, home) == 0 || codexClients(ps, home) > 0 {
+		return false, nil
+	}
+	codexRestarting.Lock()
+	defer codexRestarting.Unlock()
+	cmd, err := codexDaemonCommand(ctx, home, "stop")
+	if err != nil {
+		return false, err
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if msg := lastLine(out); msg != "" {
+			return false, errors.New("codex app-server daemon stop: " + msg)
+		}
+		return false, errors.New("codex app-server daemon stop: " + err.Error())
+	}
+	return true, nil
 }

@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"github.com/yetone/magpie/internal/agent"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/ghtoken"
+	"github.com/yetone/magpie/internal/library"
 	"github.com/yetone/magpie/internal/middleware"
 	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/provider"
@@ -170,6 +172,9 @@ type pluginEntryJSON struct {
 	// offers every agent under MCP's name: with their descriptions while
 	// the host runs, by name alone from what it noted last when it doesn't
 	Tools []pluginToolJSON `json:"tools,omitempty"`
+	// ToolsServer is the Library's server of those tools, whose agents
+	// the row turns them off and on for (chengming0v0 on Discord)
+	ToolsServer *library.PluginServer `json:"toolsServer,omitempty"`
 }
 
 // pluginToolJSON is one tool a plugin gives, as its row lists it.
@@ -271,6 +276,10 @@ func pluginsState(ctx context.Context, w Windows) pluginsJSON {
 		}
 	}
 	toolNames := gateway.ToolNames(tools)
+	var servers map[string]library.PluginServer
+	if len(tools) > 0 {
+		servers = library.PluginServers()
+	}
 	// each plugin's subscriptions, by the names it gave last (plugin.Cached,
 	// which holds them without starting the host or asking anyone, and asks
 	// the plugins again in the background when a sign-in or the plugins
@@ -376,6 +385,9 @@ func pluginsState(ctx context.Context, w Windows) pluginsJSON {
 			for _, x := range pt.Tools {
 				j.Tools = append(j.Tools, pluginToolJSON{Name: x.Name, Description: x.Description, MCP: toolNames[e.Spec][x.Name]})
 			}
+			if sv, ok := servers[plugin.Name(e.Spec)]; ok && len(j.Tools) > 0 {
+				j.ToolsServer = &sv
+			}
 		}
 		j.Moved = provider.MovedOnto(e.Spec)
 		if j.Moved == nil {
@@ -466,7 +478,9 @@ func pluginAgents(ctx context.Context) []string {
 		have[plugin.Name(e.Spec)] = true
 	}
 	out := []string{}
-	for _, l := range plugin.Market(ctx) {
+	// the community's alone, as Discover's Agents: an author's own is
+	// found by a search
+	for _, l := range plugin.Community(plugin.Market(ctx)) {
 		if l.Kind == "agent" && !have[l.Package] {
 			out = append(out, l.Name)
 		}
@@ -896,6 +910,13 @@ type pluginAgentJSON struct {
 	Name  string `json:"name,omitempty"`
 	Icon  string `json:"icon,omitempty"`
 	Error string `json:"error,omitempty"`
+	// Missing is an agent magpie doesn't find on this computer, so Agents
+	// has no row for it (zzZ: Kimi's plugin installed and no Kimi there);
+	// Looks is where it looks, and Notice the plugin's own word on what
+	// the agent needs first
+	Missing bool   `json:"missing,omitempty"`
+	Looks   string `json:"looks,omitempty"`
+	Notice  string `json:"notice,omitempty"`
 }
 
 func pluginAgentOf(spec string, errs map[string]string) *pluginAgentJSON {
@@ -903,9 +924,18 @@ func pluginAgentOf(spec string, errs map[string]string) *pluginAgentJSON {
 		return &pluginAgentJSON{Error: err}
 	}
 	for _, a := range agent.All() {
-		if a.Plugin == spec {
-			return &pluginAgentJSON{ID: a.ID, Name: a.Name, Icon: a.Icon}
+		if a.Plugin != spec {
+			continue
 		}
+		j := &pluginAgentJSON{ID: a.ID, Name: a.Name, Icon: a.Icon}
+		if !a.Detected() {
+			j.Missing = true
+			j.Looks = tilde(cmp.Or(a.Dir, a.Path))
+			if a.Notice != nil {
+				j.Notice = a.Notice()
+			}
+		}
+		return j
 	}
 	return nil
 }

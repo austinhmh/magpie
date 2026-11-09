@@ -220,6 +220,9 @@ func (p Provider) Sign(ctx context.Context, req *http.Request, proto Protocol, b
 		return errAccountDiscoveryOff
 	}
 	ctx = p.Via(ctx) // a sign-in refreshed on the way goes through its proxy
+	// the agent's own headers the provider lists (PassHeaders), before an
+	// account's signing, which has the last word on its own
+	passed := p.passClientHeaders(ctx, req.Header)
 	if p.Account != nil && p.Account.sign != nil {
 		return p.Account.sign(ctx, req, body)
 	}
@@ -250,6 +253,9 @@ func (p Provider) Sign(ctx context.Context, req *http.Request, proto Protocol, b
 	// ${sessionId} and ${threadId} in a value are the conversation's
 	// (conversation.go).
 	for k, v := range p.SentHeaders(ctx) {
+		if slices.ContainsFunc(passed, func(n string) bool { return strings.EqualFold(n, k) }) {
+			continue // the agent sent its own, which stands over the user's fixed one
+		}
 		if ListHeader(k) {
 			MergeList(req.Header, k, v)
 			continue
@@ -413,6 +419,18 @@ type claudeAuth struct {
 	Scopes           []string `json:"scopes"`
 	SubscriptionType string   `json:"subscriptionType"`
 	RateLimitTier    string   `json:"rateLimitTier"`
+}
+
+// plan names the Claude subscription as Anthropic sells it now:
+// Max 20x is Claude Ultra, while Claude Code still says "max" for it
+// and tells the two apart only by the rate-limit tier.
+func (a claudeAuth) plan() string { return claudePlan(a.SubscriptionType, a.RateLimitTier) }
+
+func claudePlan(sub, tier string) string {
+	if sub == "max" && strings.Contains(tier, "max_20x") {
+		return "ultra"
+	}
+	return sub
 }
 
 // claudeCredentials keeps the whole credential blob in raw, so refreshing a
@@ -816,9 +834,9 @@ func claudeAccount() (Provider, bool) {
 	if signedOut {
 		return claudeStandInAccount()
 	}
-	plan := c.OAuth.SubscriptionType
+	plan := c.OAuth.plan()
 	if statusPlan != "" {
-		plan = statusPlan
+		plan = claudePlan(statusPlan, c.OAuth.RateLimitTier)
 	}
 	// named as its saved login is (liveLogin): it is then the account Logins
 	// flags Active, not served a second time beside itself, and its
@@ -1174,6 +1192,18 @@ func codexTokenRenewing(ctx context.Context, dir, stale string) (tok, accountID 
 	// moment on Windows is waited out (#2239, #1505). A write that still
 	// fails loses the rotation, said in the log; the fresh access token in
 	// hand still serves this request.
+	//
+	// Only over the sign-in this refresh started from, though. The refresh
+	// is a network round trip, and the store may hold another sign-in by
+	// now: Codex signed in to another account (the Codex app's own
+	// sign-in, or a magpie outside codexMu), or signed out. Writing the
+	// refreshed one over it switched Codex back to the account it had
+	// been switched off (darwish4021 on Discord: "switched my account").
+	// The fresh access token still serves the request in hand.
+	if now, _, err := readCodexLogin(dir, true); err != nil || !sameRefreshToken(now, a.Tokens.RefreshToken) {
+		log.Printf("codex: the sign-in in %s changed while %s was being refreshed; the refresh is not written over it", dir, accountID)
+		return tok, accountID, nil
+	}
 	if out, err := json.MarshalIndent(raw, "", "  "); err == nil {
 		if werr := st.write(out); werr != nil {
 			where := st.file()
@@ -1226,6 +1256,13 @@ func forcedReason(ctx context.Context) string {
 // body of client_id, grant_type, refresh_token and refresh_reason, with
 // no scope (a refresh keeps the scopes granted), and Codex's originator
 // and User-Agent.
+// sameRefreshToken says the sign-in b still holds refresh, the refresh
+// token a refresh started from.
+func sameRefreshToken(b []byte, refresh string) bool {
+	var a codexAuth
+	return json.Unmarshal(b, &a) == nil && refresh != "" && a.Tokens.RefreshToken == refresh
+}
+
 func codexRefresh(ctx context.Context, raw map[string]any, reason string) (string, error) {
 	toks, _ := raw["tokens"].(map[string]any)
 	if toks == nil {
@@ -1252,7 +1289,7 @@ func codexRefresh(ctx context.Context, raw map[string]any, reason string) (strin
 	}
 	req.Header.Set("Content-Type", "application/json")
 	codexClientHeaders(req.Header, codexVersion())
-	res, err := http.DefaultClient.Do(req)
+	res, err := Keyed(http.DefaultClient).Do(req)
 	if err != nil {
 		return "", errors.New("Codex token refresh: " + err.Error())
 	}
@@ -1640,7 +1677,7 @@ func copilotToken(ctx context.Context, app copilotApp) (copilotSession, error) {
 	for k, v := range copilotHeaders {
 		req.Header.Set(k, v)
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := Keyed(http.DefaultClient).Do(req)
 	if err != nil {
 		return copilotSession{}, errors.New("Copilot sign-in: " + err.Error())
 	}
@@ -1718,7 +1755,7 @@ func copilotAccept(ctx context.Context, app copilotApp, s copilotSession, model 
 	for k, v := range s.headers() {
 		req.Header.Set(k, v)
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := Keyed(http.DefaultClient).Do(req)
 	if err != nil {
 		return
 	}
@@ -1749,7 +1786,7 @@ func copilotModels(ctx context.Context, app copilotApp) ([]catalog.Model, error)
 	for k, v := range s.headers() {
 		req.Header.Set(k, v)
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := Keyed(http.DefaultClient).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -1795,11 +1832,22 @@ func copilotModels(ctx context.Context, app copilotApp) ([]catalog.Model, error)
 	}
 	copilotSeenMu.Unlock()
 	for _, m := range v.Data {
-		if m.Capabilities.Type != "chat" || copilotInternal.MatchString(m.ID) || m.Vendor == "Experimental" {
+		if copilotDrawsModel(m.Capabilities.Type, m.ID) && !copilotInternal.MatchString(m.ID) {
+			// an image model (GPT Image 2.5 Flare in Copilot CLI): drawn at
+			// the account's /images API, never offered to an agent's chat
+			if m.Policy == nil || m.Policy.State == "enabled" {
+				out = append(out, catalog.Model{ID: m.ID, Name: m.Name, Draws: true})
+			}
 			continue
 		}
-		// a model no picker offers is an old snapshot or Copilot's own
-		if !m.Picker && m.Category == "" {
+		if m.Capabilities.Type != "chat" || copilotInternal.MatchString(m.ID) {
+			continue
+		}
+		// a model no picker offers is an old snapshot or Copilot's own; an
+		// Experimental vendor's is Copilot's own too, unless the picker
+		// offers it (#4343: mai-code-2-flash, an Enterprise account's,
+		// served on /responses)
+		if !m.Picker && (m.Category == "" || m.Vendor == "Experimental") {
 			continue
 		}
 		switch {
@@ -1850,4 +1898,17 @@ func forgetClaudeStatus() {
 	claudeStatusGen++
 	claudeStatusBusy = false
 	claudeStatusMu.Unlock()
+}
+
+// copilotDrawsModel is whether a /models entry of capabilities.type typ is
+// an image model: Copilot types it for images, or it isn't a chat, embedding
+// or other known type and its id names images.
+func copilotDrawsModel(typ, id string) bool {
+	switch strings.ToLower(typ) {
+	case "image", "images", "image_generation", "image-generation":
+		return true
+	case "chat", "embeddings", "embedding", "completion", "completions":
+		return false
+	}
+	return catalog.DrawsID(id)
 }

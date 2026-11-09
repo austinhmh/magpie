@@ -74,7 +74,7 @@ const L = {
   zh: {
     statuses: ["429 · rate_limit_error", "200", "成功", "rate_limit", "200 · 2 次尝试"], badge: "本地会话",
     split: [["脱敏", "150 毫秒"], ["magpie 内耗时", "30 毫秒"], ["之前失败的尝试", "103 秒"], ["连接并发送请求", "820 毫秒"], ["厂商首字等待", "37 秒"]],
-    speed: "24 token/秒", tokens: "输入 300 · 输出 40 · 缓存读取 0 · 缓存创建 0", labels: { fail: ["状态", "错误类型", "上游返回", "耗时", "请求 ID", "终结点", "协议", "会话 ID"], ok: ["状态", "耗时", "Token", "速度", "请求 ID", "终结点", "协议", "用途", "首字耗时", "magpie 内耗时", "厂商首字等待"], log: ["请求 ID", "会话 ID", "数据来源"], logFail: ["状态", "错误类型", "错误", "请求 ID", "会话 ID", "数据来源"] },
+    speed: "24 token/秒", tokens: "输入 300 · 输出 40 · 缓存读取 0 · 缓存创建 0", labels: { fail: ["状态", "错误类型", "上游返回", "耗时", "请求 ID", "接口地址", "协议", "会话 ID"], ok: ["状态", "耗时", "Token", "速度", "请求 ID", "接口地址", "协议", "用途", "首字耗时", "magpie 内耗时", "厂商首字等待"], log: ["请求 ID", "会话 ID", "数据来源"], logFail: ["状态", "错误类型", "错误", "请求 ID", "会话 ID", "数据来源"] },
     subagent: "子代理",
     noStatus: "读自 Agent 的会话文件；仅在本地元数据能够明确识别时显示账号，不推断供应商。",
   },
@@ -126,8 +126,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.deepEqual(await badge(".src.proto"), ["Responses", "Anthropic → Chat", "", "", "Responses"]);
         assert.equal(await p.locator(".led tbody tr.led-detail").count(), 0, "closed to begin with");
 
-        const labels = async () => p.locator(".led tbody tr.led-detail dt:not(.lc-opt)").allTextContents();
-        const values = async () => p.locator(".led tbody tr.led-detail dd:not(.lc-opt)").allTextContents();
+        const labels = async () => p.locator(".led tbody tr.led-detail dt:not(.lc-opt, .lc-opt2)").allTextContents();
+        const values = async () => p.locator(".led tbody tr.led-detail dd:not(.lc-opt, .lc-opt2)").allTextContents();
         const top = async () => p.locator("#view-usage").evaluate((v) => v.scrollTop);
         // scrolled by the wheel, as a reader does: the page puts back any scroll
         // that no wheel, key or drag asked for
@@ -178,7 +178,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert(!(await p.locator(".led-detail").nth(1).locator("dd.bad").count()), "a session file's success has nothing in red");
         assert.equal((await p.locator(".led-detail").nth(1).locator("dd").last().textContent()), w.noStatus);
         await reader.click(p, rows.nth(3));
-        assert.deepEqual(await p.locator(".led-detail").nth(2).locator("dt:not(.lc-opt)").allTextContents(), w.labels.logFail);
+        assert.deepEqual(await p.locator(".led-detail").nth(2).locator("dt:not(.lc-opt, .lc-opt2)").allTextContents(), w.labels.logFail);
         assert.equal(await p.locator(".led-detail").nth(2).locator("dd").nth(2).textContent(), "You've hit your limit · resets 3am");
 
         // #1532: of the 104 s before the vendor had the request, magpie's own

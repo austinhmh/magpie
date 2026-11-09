@@ -29,7 +29,7 @@ package agentenv
 // of them, and sets back the ones its own fixtures need.
 var Vars = []string{
 	// Claude Code, Codex and Copilot CLI
-	"CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME",
+	"CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME", "COPILOT_PROVIDERS_CONFIG",
 	// Claude Code's temp folder, the images its sessions were given
 	"CLAUDE_CODE_TMPDIR",
 	// Zed, or a fork of it that keeps its settings (ZedG)
@@ -71,6 +71,11 @@ var Vars = []string{
 	"ANTE_HOME",
 	// NewMax's data folder (its newmax.db), ~/.newmax without it
 	"NEWMAX_USER_DATA_DIR",
+	// LiveAgent's data folder (K-brain's config.json), else the one
+	// ~/.liveagent/data-dir.json points to, else ~/.liveagent
+	"LIVEAGENT_HOME", "K_BRAIN_HOME",
+	// OpenMausBot's data folder (its config.json), ~/.openmausbot without it
+	"OMB_DATA_DIR",
 	// AstrBot's root, the folder holding its data/ (else ~/.astrbot, the desktop app's)
 	"ASTRBOT_ROOT",
 	// jcode's folder, ~/.jcode without it
@@ -81,6 +86,8 @@ var Vars = []string{
 	// MiMo Code, MiniMax Code, OpenHanako, Hermes, dsh, WorkBuddy, CodeBuddy Code
 	"MIMOCODE_HOME", "MINIMAX_DATA_DIR", "HANA_HOME", "HERMES_HOME", "DSH_HOME",
 	"WORKBUDDY_CONFIG_DIR", "CODEBUDDY_CONFIG_DIR",
+	// DS Bot's data folder, and its Electron userData holding locations.json
+	"DS_BOT_HOME", "DS_BOT_SHELL_DATA",
 	// DevEco Code's extra config folder, read after ~/.config/deveco
 	"DEVECO_CONFIG_DIR",
 	// alma-server's data folder (Alma without a desktop, on Linux)

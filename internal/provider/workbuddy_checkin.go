@@ -19,7 +19,8 @@ package provider
 // and account id (no name, no token), so a restart doesn't ask again. An
 // answer — claimed, already in, not eligible, the event over — holds for
 // the rest of the day; a request that didn't get one (the network, a
-// refused token) is tried again after wbCheckinRetry, or, when it never
+// refused token) is tried again after wbCheckinRetry, or at the until a
+// plugin gave it (heldUntil), or, when it never
 // reached WorkBuddy (a machine just woken, its network not back yet), a
 // minute later, and twice as long each time it still doesn't.
 //
@@ -71,7 +72,7 @@ const (
 	CheckinDone       = "done"       // in already, pressed in WorkBuddy or before
 	CheckinIneligible = "ineligible" // the account can't take part
 	CheckinInactive   = "inactive"   // no event running, or it has ended
-	CheckinFailed     = "failed"     // no answer; tried again later that day
+	CheckinFailed     = "failed"     // no answer; tried again later, at its until if given
 	// CheckinCaptcha is a plugin's check-in the vendor asked a captcha
 	// of: the user checks in in its own app, magpie never solves one
 	CheckinCaptcha = "captcha"
@@ -109,7 +110,8 @@ type WorkBuddyCheckin struct {
 	Msg     string    `json:"msg,omitempty"`
 	// ValidUntil is a campaign's end, or when a plugin said its vendor's
 	// day turns (auth.checkin's until), when the answer must be checked
-	// again, even if the Beijing day hasn't changed.
+	// again, even if the Beijing day hasn't changed; on a failure, the
+	// time before which it isn't asked again (heldUntil).
 	ValidUntil time.Time `json:"until,omitzero"`
 	// Offline is a failure that never reached WorkBuddy, and Tries how
 	// many before it the same day did the same.
@@ -188,6 +190,11 @@ func (r WorkBuddyCheckin) Checked() bool {
 // Qoder's daily credits open at 10:00 UTC+8, sdytman on Discord), and not
 // a failure due another try (at now; soon, at once).
 func (r WorkBuddyCheckin) settled(day string, now time.Time, soon bool) bool {
+	// a failure held to the plugin's until waits it out, the day's turn
+	// too; a press still asks
+	if h := r.heldUntil(); !soon && now.Before(h) {
+		return true
+	}
 	if r.Day != day || !r.ValidUntil.IsZero() && !now.Before(r.ValidUntil) {
 		return false
 	}
@@ -203,6 +210,26 @@ func (r WorkBuddyCheckin) retryAfter() time.Duration {
 		return wbCheckinRetry
 	}
 	return min(wbCheckinRetry, wbCheckinSoon<<min(r.Tries, 5))
+}
+
+// checkinHoldMax bounds how long a failure's until holds it (heldUntil),
+// so a far-off or wrong until can't stop an account's check-ins for good.
+const checkinHoldMax = 24 * time.Hour
+
+// heldUntil is when a failure a plugin gave an until later than its own
+// retry (ZCode's claim read rate limited, its Retry-After or the plugin's
+// own backoff: plugins#503, plugins#793) is asked again: at the until, at
+// most checkinHoldMax after the failure, not every wbCheckinRetry, which
+// kept the limit on. Zero for any other answer: a failure with no until,
+// or one sooner than its retry, which settled asks again at the until.
+func (r WorkBuddyCheckin) heldUntil() time.Time {
+	if r.Outcome != CheckinFailed || !r.ValidUntil.After(r.At.Add(r.retryAfter())) {
+		return time.Time{}
+	}
+	if most := r.At.Add(checkinHoldMax); most.Before(r.ValidUntil) {
+		return most
+	}
+	return r.ValidUntil
 }
 
 // wbCheckinStatus is the event as an account sees it.
@@ -461,6 +488,33 @@ func WithCheckins(qs []SubscriptionQuota) []SubscriptionQuota {
 	return pluginCheckinMarks(qs)
 }
 
+// LoginCheckins is m, agent's accounts' readings by user (LoginUsage),
+// with each account's daily check-in as its Usage card has it
+// (WithCheckins), for the provider editor's account rows (xwoffice_91592).
+func LoginCheckins(agent string, m map[string]SubscriptionQuota) map[string]SubscriptionQuota {
+	if len(m) == 0 {
+		return m
+	}
+	card := loginProvider(Login{Agent: agent})
+	if pp, ok := pluginOfAgent(agent); ok {
+		card = PluginID(pp.ID)
+	}
+	users := make([]string, 0, len(m))
+	qs := make([]SubscriptionQuota, 0, len(m))
+	for u := range m {
+		users = append(users, u)
+		qs = append(qs, SubscriptionQuota{Provider: card, User: u})
+	}
+	qs = WithCheckins(qs)
+	out := make(map[string]SubscriptionQuota, len(m))
+	for i, u := range users {
+		q, c := m[u], qs[i]
+		q.Checkins, q.CheckinBy, q.Checkin, q.CheckinOff, q.CheckinKey = c.Checkins, c.CheckinBy, c.Checkin, c.CheckinOff, c.CheckinKey
+		out[u] = q
+	}
+	return out
+}
+
 func withCheckins(qs []SubscriptionQuota, accts []wbAccount, st map[string]WorkBuddyCheckin) []SubscriptionQuota {
 	var on []checkinCard
 	for _, a := range accts {
@@ -507,7 +561,7 @@ func markCheckins(qs []SubscriptionQuota, on []checkinCard, st map[string]WorkBu
 		if a == nil {
 			continue
 		}
-		out[i].Checkins, out[i].CheckinBy, out[i].CheckinOff = true, by, off[a.key]
+		out[i].Checkins, out[i].CheckinBy, out[i].CheckinOff, out[i].CheckinKey = true, by, off[a.key], a.key
 		if r, ok := st[a.key]; ok {
 			r.User, r.By = a.User, by
 			out[i].Checkin = &r
@@ -614,7 +668,7 @@ func (l *wbCheckinLoop) tick(ctx context.Context, c checkinRunner) []WorkBuddyCh
 	for _, r := range rs {
 		due := time.Time{}
 		if r.Outcome == CheckinFailed {
-			due = r.At.Add(r.retryAfter())
+			due = cmp.Or(r.heldUntil(), r.At.Add(r.retryAfter()))
 		}
 		// and as the vendor's own day turns, when it said (ValidUntil)
 		if u := r.ValidUntil; u.After(now) && (due.IsZero() || u.Before(due)) {

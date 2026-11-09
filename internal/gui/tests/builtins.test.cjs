@@ -26,7 +26,7 @@ const PLUGINS = [
   { id: "middleware", name: "JS gateway plugins", sub: "Run the JavaScript gateway plugins: middleware on agents' requests and replies, routings and usage observers", one: "1 gateway plugin on", many: "{n} gateway plugins on" },
   { id: "otel", name: "Observability", sub: "Send each request's traces and metrics to an OpenTelemetry collector, such as Langfuse", one: "Sending to a collector", many: "Sending to a collector" },
   { id: "redact", name: "Privacy masking", sub: "Secrets, personal data and your own words go to vendors as placeholders, and come back as they were", one: "Masking is on", many: "Masking is on" },
-  { id: "rotation", name: "Routing strategies", sub: "The routings besides Smart: In order, Until used up, In turn, Least used first, Weekly pace, By weight, Free first, Speed first and Cheapest first", one: "1 provider or group routed so", many: "{n} providers and groups routed so" },
+  { id: "rotation", name: "Routing strategies", sub: "The routings besides Smart: In order, Until used up, In turn, Least used first, Use before expiry, By weight, Free first, Speed first and Cheapest first", one: "1 provider or group routed so", many: "{n} providers and groups routed so" },
   { id: "routing", name: "Routing", sub: "Each request as the gateway routes it, the accounts it weighed and what each answered, and your routing groups", one: "1 group in use", many: "{n} groups in use" },
   { id: "search", name: "Web search", sub: "Models that can't search the web search with a provider that can, or a search API", one: "1 search source set up", many: "{n} search sources set up" },
   { id: "sessions", name: "Sessions", sub: "Your agents' past conversations: read, search, resume and export them", one: "Recording gateway conversations", many: "Recording gateway conversations" },
@@ -112,7 +112,10 @@ function server(lang, posts, broken) {
 const tabs = (page) => page.evaluate(() => [...document.querySelectorAll("#nav button[data-view]")].filter((b) => !b.hidden && b.offsetParent && getComputedStyle(b).display !== "none").map((b) => b.dataset.view));
 const viewShown = (page) => page.evaluate(() => [...document.querySelectorAll("main.view")].filter((v) => !v.hidden).map((v) => v.id));
 // the tabs with Sessions and Library off, the preset's masking on
+// (Routing groups has a tab of its own in the sidebar only, from 1024
+// points; under it Routing's page opens them)
 const KEPT = ["agents", "providers", "routing", "gateway", "usage", "masking", "plugins"];
+const keptAt = (width) => (width >= 1024 ? KEPT.flatMap((k) => (k === "routing" ? [k, "groups"] : [k])) : KEPT);
 const rowsOf = (page) => page.evaluate(() => [...document.querySelectorAll("#builtinList .feat-row")].map((r) => {
   const b = r.querySelector('[role="switch"]');
   return { id: r.dataset.id, name: r.querySelector(".name").textContent, on: b.getAttribute("aria-checked"), disabled: b.disabled, why: r.querySelector(".feat-why")?.textContent || "" };
@@ -145,7 +148,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.waitForSelector("#nav button.on");
         const side = await page.evaluate(() => document.body.classList.contains("side-nav"));
         assert.equal(side, width >= 1024, `${where}: the layout`);
-        if (width >= 800) assert.deepEqual(await tabs(page), KEPT, `${where}: Sessions' and Library's tabs gone`);
+        if (width >= 800) assert.deepEqual(await tabs(page), keptAt(width), `${where}: Sessions' and Library's tabs gone`);
         // an address kept for a page switched off opens Agents
         assert.deepEqual(await viewShown(page), ["view-agents"], `${where}: ?view=sessions`);
         // Settings has no Features tab of its own, and Observability's is off
@@ -206,7 +209,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator('#builtinList [data-id="library"] [role="switch"]').click();
         await page.waitForSelector('#builtinList [data-id="library"] [aria-checked="true"]');
         assert.deepEqual(posts, [["library", true]], where);
-        if (width >= 800) assert.deepEqual(await tabs(page), ["agents", "library", ...KEPT.slice(1)], `${where}: Library back`);
+        if (width >= 800) assert.deepEqual(await tabs(page), ["agents", "library", ...keptAt(width).slice(1)], `${where}: Library back`);
         assert.deepEqual(await viewShown(page), ["view-plugins"], `${where}: Plugins stays`);
         // Observability's, Routing's and Usage's rows can be below the fold:
         // the reader scrolls to them with the wheel, since the page puts back
@@ -253,7 +256,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator('#builtinList [data-id="routing"] [role="switch"]').click();
         await page.waitForSelector('#builtinList [data-id="routing"] [aria-checked="false"]');
         assert.deepEqual(posts.at(-1), ["routing", false], where);
-        if (width >= 800) assert.deepEqual(await tabs(page), ["agents", "library", ...KEPT.slice(1).filter((k) => k !== "routing")], `${where}: Routing gone`);
+        if (width >= 800) assert.deepEqual(await tabs(page), ["agents", "library", ...keptAt(width).slice(1).filter((k) => k !== "routing" && k !== "groups")], `${where}: Routing gone`);
         assert.deepEqual(await viewShown(page), ["view-plugins"], `${where}: Plugins stays`);
         // and Usage: its tab goes
         const usageSwitch = page.locator('#builtinList [data-id="usage"] [role="switch"]');
@@ -262,7 +265,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await usageSwitch.click();
         await page.waitForSelector('#builtinList [data-id="usage"] [aria-checked="false"]');
         assert.deepEqual(posts.at(-1), ["usage", false], where);
-        if (width >= 800) assert.deepEqual(await tabs(page), ["agents", "library", ...KEPT.slice(1).filter((k) => k !== "routing" && k !== "usage")], `${where}: Usage gone`);
+        if (width >= 800) assert.deepEqual(await tabs(page), ["agents", "library", ...keptAt(width).slice(1).filter((k) => k !== "routing" && k !== "groups" && k !== "usage")], `${where}: Usage gone`);
         assert.deepEqual(await viewShown(page), ["view-plugins"], `${where}: Plugins stays`);
         // Discover brings the search back
         await pluginTabs(page, side).nth(1).click();

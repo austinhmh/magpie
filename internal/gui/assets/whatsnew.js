@@ -36,7 +36,7 @@ function showWhatsNew(releases, auto, more = {}) {
       h.append(el("b", "", "v" + wait.at(-1).version + (wait.length > 1 ? " – v" + wait[0].version : "")), el("span", "badge", t("Not installed yet")));
       sec.append(h);
     }
-    sec.append(mergedNotes(releases));
+    sec.append(mergedNotes(releases, more.total));
     ed.append(sec);
   }
   else for (const r of releases) {
@@ -120,7 +120,10 @@ const NOTE_ORDER = ["Features", "Improvements", "Performance Improvements", "Bug
 // one heading per kind, New features first, each with the version it came
 // in, newest first, and a line that says the range. A line outside a list
 // is a bullet of its own; a release with no notes is left out.
-function mergedNotes(releases) {
+// total: how many releases there are in all when the server kept only the
+// newest (update.MostNotes), so 156 behind doesn't read "40 releases"
+// (sujingshen on X).
+function mergedNotes(releases, total = 0) {
   const secs = new Map();
   for (const r of releases) {
     const of = (k) => secs.get(k) || secs.set(k, []).get(k);
@@ -145,7 +148,10 @@ function mergedNotes(releases) {
   const rank = (k) => { const i = NOTE_ORDER.findIndex((o) => t(o) === k); return i < 0 ? NOTE_ORDER.length : i; };
   const box = el("div", "wn-notes wn-merged");
   const vs = releases.map((r) => r.version);
-  box.append(el("div", "wn-span", t("{n} releases · {from} – {to}", { n: vs.length, from: "v" + vs.at(-1), to: "v" + vs[0] })));
+  const span = total > vs.length
+    ? t("{n} releases · the newest {m} shown, {from} – {to}", { n: total, m: vs.length, from: "v" + vs.at(-1), to: "v" + vs[0] })
+    : t("{n} releases · {from} – {to}", { n: vs.length, from: "v" + vs.at(-1), to: "v" + vs[0] });
+  box.append(el("div", "wn-span", span));
   for (const [k, items] of [...secs].filter(([, x]) => x.length).sort((a, b) => rank(a[0]) - rank(b[0]))) {
     const h = el("div", "wn-h wn-h2");
     h.append(k, el("span", "wn-n", String(items.length)));
@@ -191,38 +197,55 @@ function noteLink(text, url) {
 // confirmUpdate shows what changed before an update downloaded is put in
 // (Hu9956, #844: every update came unseen, its notes three clicks away in
 // Settings › About): every release's notes after this one up to it, newest
-// first, with Restart to update and Later. The update's own notes show at
-// once; the releases between come in after. go restarts. The tray's panel,
+// first, with Restart to update and Later. go restarts. The tray's panel,
 // with no room for a dialog, restarts as before.
-async function confirmUpdate(u, go) {
+// The sheet opens once, with the whole list. It used to open on the
+// update's own notes and swap in the releases between seconds later, which
+// read as a one-line changelog that then jumped to the real one. b, the
+// button clicked, made busy by app.js, stays so until the list is in; past
+// WN_WAIT the update's own notes are shown.
+const WN_WAIT = 15000;
+let wnAsking = false;
+async function confirmUpdate(u, go, b) {
+  if (wnAsking) return b?.classList.remove("busy");
+  wnAsking = true;
+  // the notes' answer asks the feed again first, and names a release out
+  // since the one downloaded (#910), which the restart then waits for
+  let w;
+  try {
+    w = await Promise.race([
+      api(updatePath("update/notes")).catch(() => null),
+      new Promise((r) => setTimeout(() => r(null), WN_WAIT)),
+    ]);
+  } finally {
+    wnAsking = false;
+    b?.classList.remove("busy");
+  }
+  if (!$("#modal").hidden) return; // another dialog took the screen meanwhile
+  const releases = w?.releases?.length ? w.releases : u.notes ? [{ version: u.latest, notes: u.notes }] : [];
   const ed = el("div", "editor whatsnew update-ask");
   const head = el("div", "ehead");
-  const title = el("b", "", t("Update to {v}", { v: "v" + u.latest }));
-  head.append(title);
+  head.append(el("b", "", t("Update to {v}", { v: "v" + (w?.latest || u.latest) })));
   if (u.current) head.append(el("span", "wn-since", t("What changed since {v}", { v: "v" + u.current })));
   const box = el("div", "wn-list");
-  const draw = (releases) => {
-    box.replaceChildren();
-    if (releases.length > 1) {
-      const sec = el("section", "wn-rel");
-      sec.append(mergedNotes(releases));
-      box.append(sec);
-    }
-    else for (const r of releases) {
-      const sec = el("section", "wn-rel");
-      const h = el("div", "wn-ver");
-      h.append(el("b", "", "v" + r.version));
-      sec.append(h, noteBlocks(r.notes));
-      box.append(sec);
-    }
-    if (!releases.length) {
-      const sec = el("section", "wn-rel wn-none");
-      sec.append(el("p", "wn-msg", t("No release notes provided.")));
-      if (u.url) sec.append(noteLink(t("Open the release page"), u.url));
-      box.append(sec);
-    }
-  };
-  draw(u.notes ? [{ version: u.latest, notes: u.notes }] : []);
+  if (releases.length > 1) {
+    const sec = el("section", "wn-rel");
+    sec.append(mergedNotes(releases, w?.total));
+    box.append(sec);
+  }
+  else for (const r of releases) {
+    const sec = el("section", "wn-rel");
+    const h = el("div", "wn-ver");
+    h.append(el("b", "", "v" + r.version));
+    sec.append(h, noteBlocks(r.notes));
+    box.append(sec);
+  }
+  if (!releases.length) {
+    const sec = el("section", "wn-rel wn-none");
+    sec.append(el("p", "wn-msg", t("No release notes provided.")));
+    if (u.url) sec.append(noteLink(t("Open the release page"), u.url));
+    box.append(sec);
+  }
   const bar = el("div", "bar");
   const later = el("button", "text", t("Later"));
   later.onclick = cancelAsk;
@@ -234,12 +257,6 @@ async function confirmUpdate(u, go) {
   openModal(ed);
   $("#modal").classList.add("lib");
   ok.focus(NO_SCROLL);
-  // the notes' answer asks the feed again first, and names a release out
-  // since the one downloaded (#910), which the restart then waits for
-  const w = await api(updatePath("update/notes")).catch(() => null);
-  if (confirmAsk !== ed) return;
-  if (w?.latest && w.latest !== u.latest) title.textContent = t("Update to {v}", { v: "v" + w.latest });
-  if (w?.releases?.length) draw(w.releases);
 }
 
 window.wnShow = showWhatsNew;

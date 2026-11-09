@@ -54,15 +54,27 @@ func EachMerged(native []Session, external []ExternalSession, each func(*Session
 		native = slices.Clone(native)
 		slices.SortStableFunc(native, newest)
 	}
-	added := externalSessions(external)
-	slices.SortStableFunc(added, newest)
+	// external's sessions in the order externalSessions then a stable
+	// sort by Last give them, as indexes: a row is made only when it is
+	// reached. Every gateway session past what native lists was made into
+	// a row on each poll, ~22 MB of a poll over ~15k sessions while one
+	// grew, though the page stops at sessions.All rows.
+	added := make([]int, 0, len(external))
+	for k, e := range external {
+		if e.Agent != "" && e.ID != "" {
+			added = append(added, k)
+		}
+	}
+	slices.SortStableFunc(added, func(a, b int) int { return external[b].Last.Compare(external[a].Last) })
+	names := desktopExternalTitles(external)
 	// a merge of the two, natives first among equals, as SliceStable over
 	// native then added gives
 	i, j := 0, 0
 	for i < len(native) || j < len(added) {
 		var s *Session
-		if j < len(added) && (i == len(native) || added[j].Last.After(native[i].Last)) {
-			s, j = &added[j], j+1
+		if j < len(added) && (i == len(native) || external[added[j]].Last.After(native[i].Last)) {
+			row := externalSession(external[added[j]], names)
+			s, j = &row, j+1
 		} else {
 			s, i = &native[i], i+1
 		}
@@ -114,15 +126,25 @@ func externalSessions(external []ExternalSession) []Session {
 		if e.Agent == "" || e.ID == "" {
 			continue
 		}
-		s := Session{ReadOnly: true, Gateway: true, Transcript: true, Agent: e.Agent, ID: e.ID, Title: cmp.Or(names[e.Agent+"|"+e.ID], e.Title, e.ID), Start: e.Start, Last: e.Last, Models: []Model{}, Unpriced: e.Unpriced}
-		for _, m := range e.Models {
-			s.Models = append(s.Models, Model{Model: m.Model, Tokens: m.Tokens, Cost: m.Cost, Priced: m.Priced})
-			s.Tokens.add(m.Tokens)
-		}
-		s.Cost = e.Cost
-		out = append(out, s)
+		out = append(out, externalSession(e, names))
 	}
 	return out
+}
+
+// externalSession is e as a list shows it; names are
+// desktopExternalTitles'.
+func externalSession(e ExternalSession, names map[string]string) Session {
+	name := ""
+	if len(names) > 0 {
+		name = names[e.Agent+"|"+e.ID]
+	}
+	s := Session{ReadOnly: true, Gateway: true, Transcript: true, Agent: e.Agent, ID: e.ID, Title: cmp.Or(name, e.Title, e.ID), Start: e.Start, Last: e.Last, Models: []Model{}, Unpriced: e.Unpriced}
+	for _, m := range e.Models {
+		s.Models = append(s.Models, Model{Model: m.Model, Tokens: m.Tokens, Cost: m.Cost, Priced: m.Priced})
+		s.Tokens.add(m.Tokens)
+	}
+	s.Cost = e.Cost
+	return s
 }
 
 // desktopExternalTitles are the names an app saved for its sessions among
@@ -250,5 +272,13 @@ func MergeExternalStats(st Stats, days []ExternalDayUsage, external []ExternalSe
 	}
 	sort.Slice(st.Days, func(i, j int) bool { return st.Days[i].Date < st.Days[j].Date })
 	sort.SliceStable(st.gateway, func(i, j int) bool { return st.gateway[i].Last.After(st.gateway[j].Last) })
+	// the sessions counted name the gateway's too (linkaww on Discord):
+	// Usage › Sessions lists only the keys here, so a session that came
+	// through the gateway alone, every one in gateway mode, wasn't listed
+	if len(st.gateway) > 0 {
+		keys := make([]string, 0, len(st.Sessions)+len(st.gateway))
+		st.eachSession(func(s *Summary) { keys = append(keys, s.Key) })
+		st.Keys = keys
+	}
 	return st
 }

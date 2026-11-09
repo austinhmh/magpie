@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"runtime/metrics"
@@ -80,6 +81,31 @@ func gatewayListed(g usage.GatewaySession, title func(agent, id string) string) 
 	return e
 }
 
+// listedExternal are the gateway's sessions a list of n rows can show:
+// those native doesn't hold (nativeKeys), as listedGateway keeps them and
+// gatewayListed makes them, newest first as EachGatewaySession gives them,
+// and no more than n, as a merge with the natives shows the newest n at
+// most. Each of ~10k gateway sessions past the natives' cap was copied
+// three times on every poll while a session grew, ~20 MB of a poll's
+// ~150 MB, and each was looked for in the store of what was asked
+// (GatewayTitler).
+func listedExternal(nativeKeys map[string]bool, n int) []sessions.ExternalSession {
+	hidden := sessions.GatewayHidden()
+	title := sessions.GatewayTitler()
+	var ext []sessions.ExternalSession
+	usage.EachGatewaySession(nativeKeys, func(g usage.GatewaySession) bool {
+		if len(ext) == n {
+			return false
+		}
+		// one a list leaves out (externalSessions) takes no room
+		if g.Agent != "" && g.ID != "" && !hidden(g.Agent, g.ID, g.Last) {
+			ext = append(ext, gatewayListed(g, title))
+		}
+		return true
+	})
+	return ext
+}
+
 func gatewaySession(g usage.GatewaySession) sessions.Session {
 	return sessions.MergeExternal(nil, []sessions.ExternalSession{gatewayListed(g, sessions.GatewayTitle)})[0]
 }
@@ -107,7 +133,7 @@ func sessionRoutes(mux *http.ServeMux, w Windows) {
 			agents[a.ID] = a
 			drawn.WriteString(a.ID + "\x00" + a.SharedName() + "\x00" + a.Icon + "\x00")
 		}
-		out := sessionsJSON{Sessions: []sessionJSON{}, Terminal: runtime.GOOS == "darwin" && !isWeb(w),
+		out := sessionsJSON{Sessions: []sessionJSON{}, Terminal: terminalHere() && !isWeb(w),
 			Dirs: []string{}}
 		for _, d := range sessions.Dirs() {
 			out.Dirs = append(out.Dirs, tilde(d))
@@ -140,12 +166,7 @@ func sessionRoutes(mux *http.ServeMux, w Windows) {
 				nativeKeys[k] = true
 			}
 		}
-		gateway := listedGateway(usage.GatewaySessions(time.Time{}, nativeKeys))
-		ext := make([]sessions.ExternalSession, 0, len(gateway))
-		title := sessions.GatewayTitler()
-		for _, g := range gateway {
-			ext = append(ext, gatewayListed(g, title))
-		}
+		ext := listedExternal(nativeKeys, n)
 		// made to size: up to sessions.All rows, grown by append each poll
 		// was copied through every size on the way, ~140 MB of eight (#2278).
 		// The rows are made from the list and the gateway's sessions as
@@ -388,12 +409,15 @@ func sessionRoutes(mux *http.ServeMux, w Windows) {
 			fail(rw, err)
 			return
 		}
-		if runtime.GOOS != "darwin" || isWeb(w) {
-			fail(rw, errors.New("opening Terminal is only for the Mac app"))
+		if !terminalHere() || isWeb(w) {
+			fail(rw, errors.New("opening a terminal is only for the desktop app"))
 			return
 		}
 		s, ok := sessions.Find(in.Agent, in.ID)
 		run := s.Resume
+		if ok && in.In == "" {
+			run = sessions.ResumeNow(s)
+		}
 		if in.In != "" {
 			run = ""
 			for _, c := range s.Carry {
@@ -421,8 +445,8 @@ func sessionRoutes(mux *http.ServeMux, w Windows) {
 			fail(rw, err)
 			return
 		}
-		if runtime.GOOS != "darwin" || isWeb(w) {
-			fail(rw, errors.New("opening Terminal is only for the Mac app"))
+		if !terminalHere() || isWeb(w) {
+			fail(rw, errors.New("opening a terminal is only for the desktop app"))
 			return
 		}
 		run, name := "", ""
@@ -455,8 +479,8 @@ func sessionRoutes(mux *http.ServeMux, w Windows) {
 			fail(rw, err)
 			return
 		}
-		if in.Open && (runtime.GOOS != "darwin" || isWeb(w)) {
-			fail(rw, errors.New("opening Terminal is only for the Mac app"))
+		if in.Open && (!terminalHere() || isWeb(w)) {
+			fail(rw, errors.New("opening a terminal is only for the desktop app"))
 			return
 		}
 		s, ok := sessions.Find(in.Agent, in.ID)
@@ -995,33 +1019,65 @@ func afterNextGC(fn func()) {
 
 // agentCommand is the shell line that starts a: its Launch where it has
 // one (agy, Claude Science, Cursor Private Inference), else its own
-// program, quoted; "" for one in a WSL distro or with no program here (a
-// desktop app). Nothing of the page's goes into it.
+// program, quoted; on Windows a PowerShell line, one in a WSL distro
+// through wsl.exe; "" for one in a WSL distro elsewhere or with no
+// program here (a desktop app). Nothing of the page's goes into it.
 func agentCommand(a *agent.Agent) string {
-	if a.WSL != "" {
-		return ""
-	}
+	launch := ""
 	if a.Launch != nil {
-		if run := a.Launch(); run != "" {
-			return run
+		launch = a.Launch()
+	}
+	return agentLine(a, launch, runtime.GOOS)
+}
+
+// agentLine is agentCommand with a's Launch already asked, for goos.
+func agentLine(a *agent.Agent, launch, goos string) string {
+	if a.WSL != "" {
+		if goos != "windows" || !plainBin.MatchString(a.Bin) {
+			return ""
 		}
+		if launch == "" {
+			launch = a.Bin
+		}
+		ps := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
+		return "wsl.exe -d " + ps(a.WSL) + " -e sh -lc " + ps(`exec "${SHELL:-sh}" -lic `+shellQuote(launch))
+	}
+	if launch != "" {
+		return launch
 	}
 	if bin := a.BinPath(); bin != "" {
+		if goos == "windows" {
+			return "& '" + strings.ReplaceAll(bin, "'", "''") + "'"
+		}
 		return shellQuote(bin)
 	}
 	return ""
 }
+
+// plainBin is a program name a distro's shell takes as it is.
+var plainBin = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
 
 // agentTerminal is openTerminal, a var so a test opens no terminal.
 var agentTerminal = openTerminal
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// openTerminal runs a command in the chosen Mac terminal through a .command
-// file, as it would open from Finder: no Automation consent; in Rex,
-// through its CLI, in a tab labelled label (terminal_rex.go).
-// The shell is left open when the agent quits.
+// openTerminal runs a command in the chosen terminal, the shell left open
+// when the agent quits: on Windows and Linux as terminal_open.go says.
 func openTerminal(command, label, choice string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return openWinTerminal(command, choice)
+	case "linux":
+		return openLinuxTerminal(command, choice)
+	}
+	return openMacTerminal(command, label, choice)
+}
+
+// openMacTerminal runs a command in the chosen Mac terminal through a
+// .command file, as it would open from Finder: no Automation consent; in
+// Rex, through its CLI, in a tab labelled label (terminal_rex.go).
+func openMacTerminal(command, label, choice string) error {
 	var found terminalDiscovery
 	if choice != terminalBundleID {
 		var err error

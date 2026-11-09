@@ -4,10 +4,22 @@
 // a FetchSession whose fetch is the real one's, the request, connection
 // and TLS untouched, and copies the reply of each of the main turn's
 // requests (x-claude-code-request-class: main), as it streams, to the
-// file MAGPIE_CLAUDE_TAP names: a JSON line an event. Claude Code reads
+// file MAGPIE_CLAUDE_TAP names: a JSON line an event, and the reply's
+// anthropic-ratelimit-unified-* headers as it opens. Claude Code reads
 // its own copy of the stream as before.
+//
+// MAGPIE_CLAUDE_GUARD names a file of the bridge's holding the
+// CLAUDE_CODE_EXTRA_BODY a turn of the client's gave (its safeguards).
+// Claude Code reads that variable as it builds each request, but only
+// from its own environment, which nothing outside can change once it
+// runs: each request to /v1/messages is given the file's safeguards, as
+// Claude Code would have put them there had the variable said so, and
+// the variable is set to it for the requests after. The file says it was
+// seen (<file>.live) at the first request it could be put in.
 (() => {
   const file = process.env.MAGPIE_CLAUDE_TAP;
+  const guard = process.env.MAGPIE_CLAUDE_GUARD;
+  delete process.env.MAGPIE_CLAUDE_GUARD;
   if (!file) return;
   // none of it is handed on to what Claude Code runs, nor says it is here
   delete process.env.MAGPIE_CLAUDE_TAP;
@@ -40,6 +52,39 @@
     return;
   }
   let streams = 0;
+  let live = false;
+  // body is a request's body with the guard file's safeguards: the same
+  // bytes when they are what it has, or when it has none to replace (a
+  // request Claude Code builds without the extra body)
+  const guarded = (body) => {
+    if (!guard || typeof body !== "string" || body.indexOf('"safeguards"') < 0) return body;
+    let extra, now;
+    try {
+      extra = fs.readFileSync(guard, "utf8");
+      now = JSON.parse(extra);
+    } catch {
+      return body;
+    }
+    if (!now || typeof now !== "object" || !("safeguards" in now)) return body;
+    let req;
+    try {
+      req = JSON.parse(body);
+    } catch {
+      return body;
+    }
+    if (!req || typeof req !== "object" || !("safeguards" in req)) return body;
+    if (!live) {
+      live = true;
+      try {
+        fs.writeFileSync(guard + ".live", "");
+      } catch {}
+    }
+    if (process.env.CLAUDE_CODE_EXTRA_BODY !== extra) process.env.CLAUDE_CODE_EXTRA_BODY = extra;
+    if (JSON.stringify(req.safeguards) === JSON.stringify(now.safeguards)) return body;
+    req.safeguards = now.safeguards;
+    put({ guard: "set" });
+    return JSON.stringify(req);
+  };
   // read tells each event of stream s, then its end: cut when it broke
   // off, as a dropped connection or Claude Code's own Esc ends it
   const read = async (s, body) => {
@@ -77,6 +122,13 @@
   };
   class FetchSession extends Real {
     async fetch(input, init) {
+      try {
+        const url = String((input && input.url) || input);
+        if (init && /\/v1\/messages(\?|$)/.test(url)) {
+          const body = guarded(init.body);
+          if (body !== init.body) init = { ...init, body };
+        }
+      } catch {}
       const res = await super.fetch(input, init);
       try {
         const url = String((input && input.url) || input);
@@ -92,7 +144,13 @@
           // told before Claude Code has the reply, so the helper knows a
           // stream is coming before any of its messages
           const s = ++streams;
-          put({ s, open: true });
+          // with the account's allowance as Anthropic tells it on the
+          // reply, which -p tells in its rate_limit_event
+          const h = {};
+          res.headers.forEach((v, k) => {
+            if (/^anthropic-ratelimit-unified-/i.test(k)) h[k.toLowerCase()] = v;
+          });
+          put(Object.keys(h).length ? { s, open: true, h } : { s, open: true });
           read(s, mine);
         }
       } catch {}

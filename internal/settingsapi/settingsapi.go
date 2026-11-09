@@ -31,9 +31,9 @@ var Keys = []string{
 	"theme", "colorblind", "reduceMotion", "noBird", "lang", "uiFont", "codeFont",
 	// the tray, the Dock and this computer
 	"tray", "dock", "dockWindow", "dockNever", "lightweight", "keepAwake", "keepAwakeDisplay",
-	"noWSLAgents", "sessionTerminal", "signInLinkOnly",
+	"noWSLAgents", "sessionTerminal", "signInLinkOnly", "quitNoAsk",
 	// the menu bar's allowance cards
-	"trayUsages", "trayUsage", "trayUsageEvery", "trayNoLogos", "trayNoBird", "trayPace", "trayNoCost", "trayWindows", "trayNoNumber",
+	"trayUsages", "trayUsage", "trayUsageEvery", "trayNoLogos", "trayNoBird", "trayNoNumber", "trayPace", "trayNoCost", "trayWindows",
 	// usage and alerts
 	"currency", "chineseUnits", "usageAlert", "balanceAlert", "resetReminder", "turnDoneAlert", "maskAlert",
 	// network
@@ -45,8 +45,10 @@ var Keys = []string{
 	"codexWarmup", "claudeWarmup", "codexWarmAt", "claudeWarmAt", "codexWarmAts", "claudeWarmAts",
 	"workbuddyCheckin", "traeCheckin", "minimaxCheckin", "qoderCheckin",
 	// models: replies, vision, images, search
-	"memberModel", "noLoopGuard", "claudeLeanPrompt", "claudePrintMode", "refusalRetries",
-	"vision", "visionEffort", "imageGen", "imageTimeout", "classifyTimeout",
+	"replyModel", "noLoopGuard", "claudeLeanPrompt", "claudePrintMode", "refusalRetries", "retryAfterCap",
+	"vision", "visionEffort", "imageGen", "videoGen", "imageTimeout", "classifyTimeout",
+	// what every routing group does that says nothing of its own
+	"groupSink", "groupFirstToken", "groupPatience",
 	"searcher", "searcherThen", "searcherEffort", "searchFirst",
 	// updates
 	"noUpdatePill", "noAutoUpdate", "updateEvery", "noAutoDownload", "autoRestart", "updateChannel",
@@ -67,6 +69,7 @@ var Choices = map[string][]string{
 	"updateChannel":  {settings.UpdateStable},
 	"updateEvery":    ints(settings.UpdateEveries),
 	"searchFirst":    {settings.SearchFirstModel, settings.SearchFirstAPI},
+	"replyModel":     settings.ReplyModels,
 }
 
 func ints(v []int) []string {
@@ -178,6 +181,10 @@ func Merge(body []byte, cur settings.Settings, web bool) (settings.Settings, err
 	if _, sent := fields["refusalRetries"]; !sent {
 		in.RefusalRetries = cur.RefusalRetries
 	}
+	// nor the longest wait an agent is told (#5371)
+	if _, sent := fields["retryAfterCap"]; !sent {
+		in.RetryAfterCap = cur.RetryAfterCap
+	}
 	// nor whether updates download by themselves (#2296)
 	if _, sent := fields["noAutoDownload"]; !sent {
 		in.NoAutoDownload = cur.NoAutoDownload
@@ -199,12 +206,27 @@ func Merge(body []byte, cur settings.Settings, web bool) (settings.Settings, err
 		in.RedactShape = cur.RedactShape
 	}
 	// nor how long an image is given to be drawn
+	// nor the video model, picked in its own row
+	if _, sent := fields["videoGen"]; !sent {
+		in.VideoGen = cur.VideoGen
+	}
 	if _, sent := fields["imageTimeout"]; !sent {
 		in.ImageTimeout = cur.ImageTimeout
 	}
 	// nor how long a routing group's classifier is given (#2934)
 	if _, sent := fields["classifyTimeout"]; !sent {
 		in.ClassifyTimeout = cur.ClassifyTimeout
+	}
+	// nor what every routing group does that says nothing of its own,
+	// which the Routing groups page sets (jiezhengj on Discord)
+	if _, sent := fields["groupSink"]; !sent {
+		in.GroupSink = cur.GroupSink
+	}
+	if _, sent := fields["groupFirstToken"]; !sent {
+		in.GroupFirstToken = cur.GroupFirstToken
+	}
+	if _, sent := fields["groupPatience"]; !sent {
+		in.GroupPatience = cur.GroupPatience
 	}
 	// nor whether animations are stilled (#3813)
 	if _, sent := fields["reduceMotion"]; !sent {
@@ -214,11 +236,32 @@ func Merge(body []byte, cur settings.Settings, web bool) (settings.Settings, err
 	if _, sent := fields["noBird"]; !sent {
 		in.NoBird = cur.NoBird
 	}
+	// nor whether a Quit asks first while agents go through magpie
+	// (zhujiu on Discord), which the Quit question sets too
+	if _, sent := fields["quitNoAsk"]; !sent {
+		in.QuitNoAsk = cur.QuitNoAsk
+	}
+	// nor what a reply's model name says, which they sent as memberModel:
+	// a change of it is that, and else the name stays as it is (vendor
+	// too, which they can't show). memberModel itself is only ever
+	// written beside replyModel (settings' normal).
+	if _, sent := fields["replyModel"]; sent {
+		in.MemberModel = false
+	} else {
+		in.ReplyModel = cur.ReplyModel
+		if _, sent := fields["memberModel"]; sent && in.MemberModel != (cur.ReplyModel == settings.ReplyMember) {
+			in.ReplyModel = settings.ReplyAsked
+			if in.MemberModel {
+				in.ReplyModel = settings.ReplyMember
+			}
+		}
+		in.MemberModel = false
+	}
 	// nor whether a value masked for the first time is told (Must2333)
 	if _, sent := fields["maskAlert"]; !sent {
 		in.MaskAlert = cur.MaskAlert
 	}
-	in.AgentOrder, in.AgentsHidden, in.AgentsShown = cur.AgentOrder, cur.AgentsHidden, cur.AgentsShown
+	in.AgentOrder, in.AgentsHidden, in.AgentsShown, in.AgentsHere = cur.AgentOrder, cur.AgentsHidden, cur.AgentsShown, cur.AgentsHere
 	in.Window, in.WindowMaximised, in.WindowAt = cur.Window, cur.WindowMaximised, cur.WindowAt // the window's own, as it was last resized and moved
 	// and what other pages keep here: which models an agent is shown, and
 	// everything the user said of a model anywhere else in the app, set on
@@ -245,6 +288,7 @@ func Merge(body []byte, cur settings.Settings, web bool) (settings.Settings, err
 	in.AllowIPs = cur.AllowIPs                         // set on its own (allowips)
 	in.FetchPrivate = cur.FetchPrivate                 // in settings.json only
 	in.RouterNote = cur.RouterNote                     // set on its own (the Library's servers/hub-note)
+	in.RouterAllTools = cur.RouterAllTools             // set on its own (the Library's servers/hub-tools)
 	in.GitHubToken = cur.GitHubToken                   // set on its own (github-token), never sent to the page
 	in.ProxyCustom = cur.ProxyCustom                   // set by settings.Save from the proxy, never by the page
 	in.RequestArchive = cur.RequestArchive             // the Gateway page's, set on its own
@@ -266,9 +310,10 @@ func Merge(body []byte, cur settings.Settings, web bool) (settings.Settings, err
 	in.RequestArchiveLocal, in.RequestArchiveLocalMB = cur.RequestArchiveLocal, cur.RequestArchiveLocalMB
 	// used or left is the Usage page's toggle as much as Settings', set on its own
 	in.QuotaLeft = cur.QuotaLeft
-	in.QuotaReads = cur.QuotaReads // set on its own (quota-reads)
-	in.SearchAll = cur.SearchAll   // set on its own (search-all)
-	in.UsageOrder = cur.UsageOrder // the Usage page's, dragged there
+	in.QuotaReads = cur.QuotaReads   // set on its own (quota-reads)
+	in.SearchAll = cur.SearchAll     // set on its own (search-all)
+	in.SearchCount = cur.SearchCount // and so is this (search-count)
+	in.UsageOrder = cur.UsageOrder   // the Usage page's, dragged there
 	// and what the tray panel's Allowances tab leaves out, set there
 	in.PanelUsageHidden = cur.PanelUsageHidden
 	// and the clients the Usage page's Agents list leaves out, set there
@@ -286,8 +331,9 @@ func Merge(body []byte, cur settings.Settings, web bool) (settings.Settings, err
 	in.BareModelIDs = cur.BareModelIDs // set on its own (bare-ids)
 	in.BusyLoad = cur.BusyLoad         // and so is this (busy-load)
 	in.CodexAgentsV1 = cur.CodexAgentsV1
-	in.FullContext = cur.FullContext // set on its own (full-context)
-	in.CompactAt = cur.CompactAt     // and so is the threshold
+	in.FullContext = cur.FullContext     // set on its own (full-context)
+	in.CompactAt = cur.CompactAt         // and so is the threshold
+	in.AgentCompacts = cur.AgentCompacts // and each agent's own (agent-compact)
 	// Codex's background compaction, set on its own (codex-async-compact)
 	in.CodexAsyncCompact, in.CodexAsyncCompactPercent = cur.CodexAsyncCompact, cur.CodexAsyncCompactPercent
 	// Claude Desktop's list, set in its row on the Agents page
@@ -343,6 +389,9 @@ func Merge(body []byte, cur settings.Settings, web bool) (settings.Settings, err
 		if _, _, ok := provider.Resolve(v); !ok {
 			return in, fmt.Errorf("no model %s to generate images", v)
 		}
+	}
+	if v := strings.TrimSpace(in.VideoGen); v != "" && v != cur.VideoGen && gateway.VideomakerMissingOf(v) != "" {
+		return in, fmt.Errorf("no model %s to make videos", v)
 	}
 	// the searchers after the one named, set in their own row: a save
 	// that doesn't send them (prefsKeep has none) keeps them, and an

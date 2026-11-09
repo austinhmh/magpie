@@ -10,6 +10,12 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
+// the rows a group's editor folds under Advanced, opened
+const openAdvanced = async (page) => {
+  const d = page.locator(".rt-gedit .rt-gadv");
+  await d.waitFor({ state: "attached" });
+  if (!(await d.evaluate((e) => e.open))) await d.locator(":scope > summary").click();
+};
 
 const assets = path.resolve(__dirname, "../assets");
 const members = ["a/m1", "a/m2"];
@@ -52,7 +58,7 @@ function serve(lang, posts) {
 }
 
 const H0 = "Agents' model lists and the gateway's /v1/models show the group and each of its models.";
-const H1 = "Agents' model lists and the gateway's /v1/models show the group, not the models it names or its patterns match: they are used through it. A signed-in subscription's models stay in agents' lists. A request naming one is still answered.";
+const H1 = "Agents' model lists and the gateway's /v1/models show the group, not the models it names or its patterns match: they are used through it. Codex keeps its ChatGPT sign-in's own models. A request naming one is still answered.";
 const KEYS = ["Model lists", "Its models too", "The group alone", "Its models unlisted", H0, H1, "Edit", "Save"];
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -70,7 +76,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const errors = [], posts = [];
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, posts));
-        await page.goto("http://magpie.test/?view=routing");
+        await page.goto("http://magpie.test/?view=groups");
         const card = page.locator(".rt-group", { hasText: "Glim" });
         await card.waitFor();
         const w = await page.evaluate(([keys, lang]) => Object.fromEntries(keys.map((k) => [k, lang === "en" ? k : I18N[lang][k]])), [KEYS, lang]);
@@ -101,6 +107,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         };
 
         await card.locator("button", { hasText: w.Edit }).click();
+        await openAdvanced(page);
         await label.waitFor();
         assert.match(await opt("Its models too").getAttribute("class"), /\bon\b/, "its models too by default");
         assert.equal(await field.locator(".hint").last().textContent(), w[H0]);

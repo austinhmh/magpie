@@ -110,6 +110,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		AgentOrder:           []string{"codex"},
 		AgentsHidden:         []string{"goose"},
 		AgentsShown:          []string{"pi"},
+		AgentsHere:           []string{"codex"},
 		Visible:              map[string][]string{"claude": {"anthropic"}},
 		HiddenModels:         map[string][]string{"claude": {"p/m"}, "codex": {"p/n", "group/g"}},
 		DisabledModels:       []string{"*fable*", "p/m"},
@@ -129,6 +130,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		ModelOutputs:         map[string]int{"p/m": 131072},
 		ModelCompacts:        map[string]int{"p/*": 500000},
 		CompactAt:            400000,
+		AgentCompacts:        map[string]settings.AgentCompact{"claude": {At: 600000}},
 		ModelPrices:          map[string]settings.ModelPrice{"p/m": {Input: &one, Output: &two}},
 		ModelWires:           map[string]string{"p/m": "vendor-c/m"},
 		ModelAPIs:            map[string]string{"p/m": "anthropic"},
@@ -137,6 +139,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		UsageAliases:         map[string]string{"deepseek-v4.1-flash": "deepseek-flash"},
 		UsageCleared:         []settings.UsageClear{{Provider: "p", Model: "m", At: 1761600000000}},
 		ModelKinds:           map[string]string{"p/m": "video"},
+		ModelHeaders:         map[string]map[string]string{"p/m": {"X-Endpoint": "ep-1"}},
 		RedactRules:          []redact.Rule{{Kind: "prefix", Prefix: "oc_sk_"}},
 		RedactActions:        map[string]string{"API_KEY": "block", "EMAIL": "warn"},
 		RedactAllow:          []string{"team@kelvarn.io"},
@@ -188,6 +191,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		GatewayMode:          "off",
 		QuotaReads:           "asked",
 		SearchAll:            true,
+		SearchCount:          9,
 		NoAccountDiscovery:   true,
 		ReClaude:             true,
 		RedactModel:          true,
@@ -197,6 +201,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 	}
 	was.RedactModelOff, was.RedactModelAuto = true, true
 	was.DesktopSubagentEffort = "high"
+	was.ReplyModel = settings.ReplyMember // memberModel, its mirror, is kept with it
 	was.CodexAsyncCompact, was.CodexAsyncCompactPercent = true, 70
 	was.ClaudeRunsMost = 3
 	was.RequestArchiveLocal, was.RequestArchiveLocalMB = true, 256
@@ -204,7 +209,10 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 	was.PanelShortcut = "Ctrl+Alt+K"
 	was.SearcherThen = []string{"fake/m1", "fake/m2"} // set in its own row
 	was.RouterNote = "Los Angeles"                    // the Library's servers/hub-note
+	was.RouterAllTools = true                         // the Library's servers/hub-tools
 	was.BusyLoad = 150                                // the Routing page's busy-load
+	// the Routing groups page's defaults for every group (groups/defaults)
+	was.GroupSink, was.GroupFirstToken, was.GroupPatience = true, 30, 120
 	if err := settings.Save(was); err != nil {
 		t.Fatal(err)
 	}

@@ -13,7 +13,9 @@
 // reading failed is not 0 but unknown: it is left out and counted as that;
 // so is a window an earlier reading (asOf) stands in for whose reset has
 // passed. A window only the vendor's text says has nothing to add up and is
-// left out. Unlimited only where every account read says so, and one
+// left out. A window the account can't spend, held by another used up that
+// starts again after it (heldBy: 0% of 7 days left, 100% of 5 hours), has
+// nothing left to count: it adds its whole as used (#4791). Unlimited only where every account read says so, and one
 // account's window alone is that account's, already below: only what two
 // or more have goes together (a Plus and a Pro account have no 5 hours in
 // common). The windows keep their family and pool, so familyWindows folds
@@ -23,7 +25,10 @@
 // quotaAll: the strip of them under a Usage card's or the tray panel's
 // head: "All 3 accounts", each window's figure and a thin bar, and how many
 // couldn't be read. Nothing when fewer than two accounts read, or nothing
-// of theirs adds up. No account is named in it (Hide accounts).
+// of theirs adds up. No account is named in it (Hide accounts). A click on
+// it, or its chevron, folds the accounts under it away (justfreefall on X),
+// remembered by provider for the window and the panel alike
+// (magpie.usageAllFolded): quotaAllFolded says whether a provider's are.
 function mergeQuotas(subs, now = Date.now()) {
   const read = subs.filter((q) => !q.error && (q.windows?.length || q.balance));
   const unknown = subs.length - read.length;
@@ -36,12 +41,14 @@ function mergeQuotas(subs, now = Date.now()) {
       if (!kind) continue;
       const k = JSON.stringify([w.name, w.family || "", w.pool || "", w.unit || "", kind]);
       let m = by.get(k);
-      if (!m) by.set(k, (m = { w, kind, plan: q.plan || "", n: 0, stale: 0, amount: 0, limit: 0, balance: 0, used: 0, soon: null }));
+      if (!m) by.set(k, (m = { w, kind, plan: q.plan || "", n: 0, stale: 0, held: 0, amount: 0, limit: 0, balance: 0, used: 0, soon: null }));
       if (q.asOf && w.resetsAt && Date.parse(w.resetsAt) <= now) { m.stale++; continue; }
       m.n++;
-      if (kind === "c") { m.amount += Math.max(0, w.amount || 0); m.limit += w.limit; }
+      const held = w.heldBy && kind !== "u" && kind !== "b";
+      if (held) m.held++;
+      if (kind === "c") { m.amount += held ? w.limit : Math.max(0, w.amount || 0); m.limit += w.limit; }
       else if (kind === "b") m.balance += w.balance;
-      else if (kind !== "u") m.used += to100(w.used);
+      else if (kind !== "u") m.used += held ? 100 : to100(w.used);
       const at = w.resetsAt && Date.parse(w.resetsAt);
       if (at > now && (m.soon == null || at < m.soon)) m.soon = at;
     }
@@ -51,7 +58,7 @@ function mergeQuotas(subs, now = Date.now()) {
     if (m.n < 2) continue; // one account's is already below
     if (m.kind === "u" && m.n < read.length) continue;
     const { w } = m;
-    const out = { name: w.name, family: w.family, pool: w.pool, unit: w.unit, accounts: m.n, unknown: m.stale, how: m.kind[0] };
+    const out = { name: w.name, family: w.family, pool: w.pool, unit: w.unit, accounts: m.n, unknown: m.stale, held: m.held, how: m.kind[0] };
     if (m.kind === "u") out.unlimited = true;
     else if (m.kind === "c") Object.assign(out, { amount: m.amount, limit: m.limit, used: (100 * m.amount) / m.limit });
     else if (m.kind === "b") out.balance = m.balance;
@@ -72,7 +79,22 @@ function quotaAll(subs, cls = "", max = Infinity) {
   const box = el("div", "quota-all" + (cls ? " " + cls : ""));
   const lead = el("span", "quota-all-head", t("All {n} accounts", { n: subs.length }));
   lead.title = t("These accounts' windows together: amounts of one unit are added up; a window said only as a share is the mean of the accounts on one plan, which have the same allowance. Each account is below.");
-  box.append(lead);
+  const p = subs[0].provider, open = !quotaAllFolded(p);
+  const fold = el("button", "quota-acct-fold quota-all-fold");
+  fold.type = "button";
+  fold.append(svg(CHEV, 11, 1.6));
+  fold.setAttribute("aria-expanded", String(open));
+  fold.title = t(open ? "Fold" : "Unfold");
+  box.dataset.fold = p;
+  box.append(lead, fold);
+  box.onclick = () => {
+    // text being selected in it is not a click on it
+    if (String(getSelection()).trim() && box.contains(getSelection().anchorNode)) return;
+    const had = document.activeElement === fold;
+    setQuotaAllFolded(p, open);
+    if (had) document.querySelector(`.quota-all[data-fold="${CSS.escape(p)}"] .quota-all-fold`)?.focus(NO_SCROLL);
+    if (mode !== "panel") backToReader($("#view-usage"));
+  };
   const ws = familyWindows(all.windows);
   for (const w of ws.slice(0, max)) {
     const item = el("span", "quota-all-w");
@@ -89,6 +111,7 @@ function quotaAll(subs, cls = "", max = Infinity) {
       name + " · " + quotaText(w),
       t(w.how === "p" ? "The mean of {n} accounts on one plan" : w.how === "u" ? "Unlimited on each of {n} accounts" : "Added up over {n} accounts", { n: w.accounts }),
       w.unknown && t("{n} more read before it started again: left out", { n: w.unknown }),
+      w.held && t("{n} of them can't spend theirs before a longer window used up starts again: counted as none left", { n: w.held }),
       w.firstReset && t("The first of them starts again {when}", { when: resetClock(new Date(w.firstReset)) }),
       w.tiers && "\n" + tiersText(w));
     box.append(item);
@@ -100,5 +123,20 @@ function quotaAll(subs, cls = "", max = Infinity) {
   }
   return box;
 }
+// read on first use: loading this file touches nothing of app.js's
+let allFolded;
+const allFolds = () => (allFolded ||= new Set(kept("usageAllFolded", [])));
+globalThis.addEventListener?.("storage", (e) => { if (e.key === "magpie.usageAllFolded") { allFolded = null; renderQuotas(); } });
+const quotaAllFolded = (p) => allFolds().has(p);
+// setQuotaAllFolded: true when it changed
+function setQuotaAllFolded(p, fold) {
+  if (fold === allFolds().has(p)) return false;
+  if (fold) allFolded.add(p); else allFolded.delete(p);
+  keep("usageAllFolded", [...allFolded]);
+  renderQuotas();
+  return true;
+}
 window.mergeQuotas = mergeQuotas;
+window.quotaAllFolded = quotaAllFolded;
+window.setQuotaAllFolded = setQuotaAllFolded;
 window.quotaAll = quotaAll;
