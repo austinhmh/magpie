@@ -1,0 +1,28 @@
+internal/gateway/reclaude_test.go
+  s_d2dbf8cf7066b0::t_bfda92256ad811 247-301
+  s_d2dbf8cf7066b0::t_0eb1197c703a4b 9
+docs/subsystems/claude-subscription-bridge.md
+  s_d2dbf8cf7066b0::t_595bef79c3716c 102-114
+internal/provider/reclaude_test.go
+  s_d2dbf8cf7066b0::t_f2a105601c29cc 16-44
+internal/gateway/claude_subscription.go
+  s_d2dbf8cf7066b0::t_844bc394f0e3c5 940-950
+internal/provider/reclaude.go
+  s_d2dbf8cf7066b0::t_4e72923b9fd6d1 9-10,14,143-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "227fb17157ffb512ec99ddaa99d49d6928c671a1",
+  "prompts": {},
+  "sessions": {
+    "s_d2dbf8cf7066b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "56a2016f-d034-41d0-85ae-7c49cb12ccfe",
+        "model": "model-syr9n5"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
