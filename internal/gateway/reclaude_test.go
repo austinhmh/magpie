@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -240,6 +241,61 @@ done
 	status, responseError = server.serveClaudeSubscription(failed, httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body)), provider.Anthropic, account, "claude-sonnet-5", []byte(body), &responseUsage)
 	if status == 200 || !strings.Contains(responseError, "daemon") {
 		t.Fatalf("a stopped daemon must refuse even an existing run: %d %s", status, responseError)
+	}
+}
+
+// A ReClaude run's Claude Code keeps its session in the config folder the
+// launcher gives it, ~/.rec/claude/accounts/<current>/config, not in
+// ~/.claude: looked for there, a turn after an interrupted tool call found
+// no session to branch off and was told the whole conversation anew.
+func TestReClaudeRunKeepsItsSessionInTheLaunchersConfigDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake launcher is a shell script")
+	}
+	fresh(t)
+	t.Setenv("MAGPIE_NO_ACCOUNTS", "")
+	home, _ := os.UserHomeDir()
+	reClaudeConfigDir := filepath.Join(home, ".rec", "claude", "accounts", "54787", "config")
+	if err := os.MkdirAll(reClaudeConfigDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".rec", "claude", "current"), []byte("54787\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	launcherDirectory := t.TempDir()
+	testenv.Program(t, filepath.Join(launcherDirectory, "reclaude"), `#!/bin/sh
+if [ "$1" = status ]; then printf 'daemon_running: true\ndaemon_reachable: true\n'; exit 0; fi
+while IFS= read -r request; do
+  echo '{"type":"stream_event","event":{"type":"message_start","message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1}}}}'
+  echo '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"from reclaude"}}}'
+  echo '{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}}'
+  echo '{"type":"stream_event","event":{"type":"message_stop"}}'
+  echo '{"type":"result","subtype":"success","is_error":false,"result":"from reclaude"}'
+done
+`)
+	t.Setenv("PATH", launcherDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := provider.SetReClaude(true); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = provider.SetReClaude(false) })
+	runsEndWithTest(t, launcherDirectory)
+	server := New()
+	t.Cleanup(server.subscription.abortAll)
+	request := &Request{Model: "claude-sonnet-5", Messages: []Message{{Role: "user", Parts: []Part{{Kind: Text, Text: "hi"}}}}}
+	run, _, err := server.subscription.startRun(provider.WithReClaude(t.Context()), request, "claude-sonnet-5", "", "claude\x00"+provider.ReClaudeUser+"\x00reclaude", nil)
+	if err != nil {
+		t.Fatalf("a ReClaude run: %v", err)
+	}
+	run.mu.Lock()
+	sessionDirectories := slices.Clone(run.sessions)
+	run.mu.Unlock()
+	if len(sessionDirectories) == 0 {
+		t.Fatal("the ReClaude run kept no session folder")
+	}
+	for _, directory := range sessionDirectories {
+		if !strings.HasPrefix(directory, filepath.Join(reClaudeConfigDir, "projects")+string(filepath.Separator)) {
+			t.Errorf("the ReClaude run looks for its session in %s, not under %s", directory, reClaudeConfigDir)
+		}
 	}
 }
 

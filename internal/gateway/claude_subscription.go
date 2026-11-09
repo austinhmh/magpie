@@ -937,6 +937,17 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		// its session is kept on disk, for a turn after it is let go to
 		// go on with it (claudeSessions)
 		sessions = claudeSessions(configDir, work)
+		if provider.ReClaudeFrom(ctx) {
+			// ReClaude's launcher picks the config folder itself. Looked
+			// for in ~/.claude, its sessions were never found: a turn
+			// after an interrupted tool call couldn't branch off the
+			// run's session and was told whole, writing the conversation
+			// to the cache again. Unknown, there is no session to use.
+			sessions = nil
+			if reClaudeConfigDir := provider.ReClaudeConfigDir(); reClaudeConfigDir != "" {
+				sessions = claudeSessions(reClaudeConfigDir, work)
+			}
+		}
 		args = slices.DeleteFunc(args, func(a string) bool { return a == "--no-session-persistence" })
 		// a caller's folder keeps its own sessions beside the runs': only
 		// magpie's own folder is swept, a run's session removed by its id

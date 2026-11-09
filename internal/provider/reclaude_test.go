@@ -13,6 +13,35 @@ import (
 	"github.com/yetone/magpie/internal/testenv"
 )
 
+func TestReClaudeConfigDirFollowsTheCurrentAccount(t *testing.T) {
+	limitsHome(t)
+	home, _ := os.UserHomeDir()
+	reClaudeRoot := filepath.Join(home, ".rec", "claude")
+	if got := ReClaudeConfigDir(); got != "" {
+		t.Fatalf("no ReClaude folder: %q, want unknown", got)
+	}
+	for _, accountID := range []string{"54786", "54793"} {
+		if err := os.MkdirAll(filepath.Join(reClaudeRoot, "accounts", accountID, "config"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, scenario := range []struct{ current, want string }{
+		{"54786\n", filepath.Join(reClaudeRoot, "accounts", "54786", "config")},
+		{"54793", filepath.Join(reClaudeRoot, "accounts", "54793", "config")},
+		{"99999", ""},
+		{"..", ""},
+		{"../54786", ""},
+		{"", ""},
+	} {
+		if err := os.WriteFile(filepath.Join(reClaudeRoot, "current"), []byte(scenario.current), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := ReClaudeConfigDir(); got != scenario.want {
+			t.Errorf("current %q: %q, want %q", scenario.current, got, scenario.want)
+		}
+	}
+}
+
 func TestReClaudeStatusChecksLiveDaemonHealth(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake launcher is a shell script")

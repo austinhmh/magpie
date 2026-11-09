@@ -99,6 +99,19 @@ and does not inject magpie's account or global upstream proxy. The launcher
 manages its own connection and config. No health cache or background probe
 is needed, and the ordinary Claude environment remains unchanged.
 
+The launcher runs Claude Code in its own config folder,
+`~/.rec/claude/accounts/<id>/config` for the account named in
+`~/.rec/claude/current` (`provider.ReClaudeConfigDir`,
+`TestReClaudeConfigDirFollowsTheCurrentAccount`). A ReClaude run's
+sessions are kept there, so `startRun` looks for them there, not in
+`~/.claude`. Before, magpie looked in `~/.claude` and never found them, so a
+ReClaude run's session couldn't be branched, unshelved or removed. When the
+user interrupted a pending tool call in Cursor, Cursor dropped that call, and
+each next turn was told the whole conversation in a new Claude Code (about
+195K tokens written to the cache, 11-09). If the account can't be read, the
+run keeps no session. `TestReClaudeRunKeepsItsSessionInTheLaunchersConfigDir`
+covers this.
+
 The helper offers each of the client's tools under `bridgeToolName`
 (`bridgeTools`), which Claude Code calls `mcp__magpie__<name>`. Claude Code
 keeps only `[A-Za-z0-9_-]` of an MCP tool's name, so a name it would change

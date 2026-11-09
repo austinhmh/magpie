@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/proc"
 	"github.com/yetone/magpie/internal/settings"
 )
@@ -135,6 +138,33 @@ func ReClaudeBinary(ctx context.Context) (string, error) {
 		return "", errReClaudeDaemonDown // the keep-alive tells this apart (startingReClaude)
 	}
 	return launcherPath, nil
+}
+
+// ReClaudeConfigDir is the Claude Code config folder ReClaude's launcher
+// runs Claude Code in: ~/.rec/claude/accounts/<id>/config, for the account
+// ~/.rec/claude/current names. A ReClaude run has magpie's own
+// CLAUDE_CONFIG_DIR taken out (cleanReClaudeEnv), so its sessions are kept
+// there, not in ~/.claude. "" when the account can't be read or its folder
+// isn't there: unknown, not ~/.claude.
+func ReClaudeConfigDir() string {
+	home, err := appdir.Home()
+	if err != nil {
+		return ""
+	}
+	reClaudeRoot := filepath.Join(home, ".rec", "claude")
+	currentAccount, err := os.ReadFile(filepath.Join(reClaudeRoot, "current"))
+	if err != nil {
+		return ""
+	}
+	accountID := strings.TrimSpace(string(currentAccount))
+	if accountID == "" || accountID == "." || accountID == ".." || accountID != filepath.Base(accountID) {
+		return ""
+	}
+	configDir := filepath.Join(reClaudeRoot, "accounts", accountID, "config")
+	if info, err := os.Stat(configDir); err != nil || !info.IsDir() {
+		return ""
+	}
+	return configDir
 }
 
 // errReClaudeDaemonDown is ReClaudeBinary's answer for a launcher found with
