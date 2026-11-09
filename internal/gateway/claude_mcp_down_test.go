@@ -82,7 +82,7 @@ func TestClaudeCallsWrittenWithoutToolsAreMadeOnceMCPIsBack(t *testing.T) {
 		`<parameter name="description">检查 DNS 解析与常用端口连通性</parameter>`+"\n</invoke>")...)
 	lines = append(lines, mcpUpInit)
 	lines = append(lines, realCallTurn...)
-	text, stop, _, _, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
+	text, stop, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
 	if strings.Contains(raw, "<invoke") || strings.Contains(raw, "<parameter") || strings.Contains(raw, "检查 DNS") {
 		t.Fatalf("the client was shown the calls written without tools:\n%s", raw)
 	}
@@ -118,7 +118,7 @@ func TestClaudeCallsWrittenWithoutToolsNoReconnectWhenUp(t *testing.T) {
 	in := &reconnectAnswering{run: run}
 	run.stdin = in
 	lines := append([]string{mcpUpInit}, textCallTurn("msg_up", "All good.\n")...)
-	text, stop, _, _, _, _, raw, _, _ := claudeReply(t, run, lines, true)
+	text, stop, _, _, raw, _, _ := claudeReply(t, run, lines, true)
 	if text != "All good.\n" || stop != "end_turn" {
 		t.Fatalf("reply %q stop %q:\n%s", text, stop, raw)
 	}
@@ -158,7 +158,7 @@ func TestClaudeRunawayTextCallsAreStopped(t *testing.T) {
 		`{"type":"result","subtype":"error_during_execution","is_error":true,"terminal_reason":"aborted_streaming"}`,
 		mcpUpInit)
 	lines = append(lines, realCallTurn...)
-	text, stop, _, _, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
+	text, stop, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
 	if strings.Contains(raw, "<invoke") || strings.Contains(raw, "dig +short") {
 		t.Fatalf("the client was shown the calls written as text:\n%.600s", raw)
 	}

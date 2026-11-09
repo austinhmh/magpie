@@ -97,7 +97,7 @@ func TestClaudeTextToolCallsAreMadeForReal(t *testing.T) {
 		strings.TrimPrefix(reportedPlanCall, "[tool call mcp__magpie__mcp__ccd_turn__update_plan id=toolu_0Valid")+"\n",
 		reportedBashCall+"\n[tool result id=toolu_0Validate]\nok"),
 		realCallTurn...)
-	text, stop, _, _, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
+	text, stop, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
 	if strings.Contains(raw, "[tool call") || strings.Contains(raw, "tool result id=") {
 		t.Fatalf("the client was shown the calls written as text:\n%s", raw)
 	}
@@ -138,7 +138,7 @@ func TestClaudeTextToolCallsAskedOnce(t *testing.T) {
 	run := &subscriptionRun{}
 	told := stdinOf(t, run)
 	lines := append(textCallTurn("msg_text", reportedPlanCall), textCallTurn("msg_again", "Calling it: \n"+reportedBashCall)...)
-	text, stop, _, _, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
+	text, stop, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
 	if text != "Calling it: \n"+reportedBashCall || stop != "end_turn" || ended != "stop" || !ok {
 		t.Fatalf("reply %q stop %q, run ended %q %v:\n%s", text, stop, ended, ok, raw)
 	}
@@ -150,7 +150,7 @@ func TestClaudeTextToolCallsAskedOnce(t *testing.T) {
 // A run with no input to tell (one that ends by itself) gives the client the
 // words as written, as before.
 func TestClaudeTextToolCallsWithoutInput(t *testing.T) {
-	text, stop, _, _, _, _, raw, _, _ := claudeReply(t, &subscriptionRun{}, textCallTurn("msg_text", "a\n"+reportedPlanCall), true)
+	text, stop, _, _, raw, _, _ := claudeReply(t, &subscriptionRun{}, textCallTurn("msg_text", "a\n"+reportedPlanCall), true)
 	if text != "a\n"+reportedPlanCall || stop != "end_turn" {
 		t.Fatalf("reply %q stop %q:\n%s", text, stop, raw)
 	}
@@ -234,7 +234,7 @@ func TestClaudeTextToolCallsUnstreamed(t *testing.T) {
 		`{"type":"assistant","message":{"id":"msg_whole","model":"claude-fable-5-1","role":"assistant","content":[{"type":"text","text":` + string(words) + `}],"stop_reason":"end_turn","usage":{"input_tokens":3,"output_tokens":40}}}`,
 		`{"type":"result","subtype":"success","is_error":false,"result":"done"}`,
 	}, realCallTurn...)
-	text, stop, _, _, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
+	text, stop, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
 	if text != "Validating.\n[mcp__ccd_turn__update_plan]" || stop != "tool_use" || ended != "tool" || !ok || len(told()) != 1 {
 		t.Fatalf("reply %q stop %q, run ended %q %v, told %q:\n%s", text, stop, ended, ok, told(), raw)
 	}
@@ -251,7 +251,7 @@ func TestClaudeTextInvokeCallsAreMadeForReal(t *testing.T) {
 		run := &subscriptionRun{}
 		told := stdinOf(t, run)
 		lines := append(textCallTurn("msg_text", "好的。\n", written[:5], written[5:]), realCallTurn...)
-		text, stop, _, _, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
+		text, stop, _, _, raw, ended, ok := claudeReply(t, run, lines, true)
 		if strings.Contains(raw, "invoke") || strings.Contains(raw, "Result:") {
 			t.Fatalf("the client was shown the calls written as text:\n%s", raw)
 		}

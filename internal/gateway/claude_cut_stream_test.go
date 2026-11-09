@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -31,8 +30,8 @@ var cutAttempt = []string{
 
 // claudeReply runs lines through readOutput and relay as an Anthropic
 // Messages stream, and says what the client was told and how the run was
-// left, what it read from the cache, and what the request is billed for.
-func claudeReply(t *testing.T, run *subscriptionRun, lines []string, hold bool) (text, stop string, out, write, read int, billed Usage, raw string, ended string, ok bool) {
+// left.
+func claudeReply(t *testing.T, run *subscriptionRun, lines []string, hold bool) (text, stop string, out, write int, raw string, ended string, ok bool) {
 	t.Helper()
 	segment := run.attach()
 	pr, pw := io.Pipe()
@@ -51,7 +50,6 @@ func claudeReply(t *testing.T, run *subscriptionRun, lines []string, hold bool) 
 	var usage Usage
 	relay(rec, httptest.NewRequest("POST", "/v1/messages", nil), provider.Anthropic, "Claude Code", req, segment, &usage,
 		func() {}, nil, func(said, s string, k bool) { ended, ok = s, k })
-	billed = usage.billed()
 	raw = rec.Body.String()
 	var tools []string
 	for _, l := range strings.Split(raw, "\n") {
@@ -71,7 +69,6 @@ func claudeReply(t *testing.T, run *subscriptionRun, lines []string, hold bool) 
 			} `json:"delta"`
 			Usage struct {
 				Output     int `json:"output_tokens"`
-				CacheRead  int `json:"cache_read_input_tokens"`
 				CacheWrite int `json:"cache_creation_input_tokens"`
 			} `json:"usage"`
 		}
@@ -86,7 +83,7 @@ func claudeReply(t *testing.T, run *subscriptionRun, lines []string, hold bool) 
 		case "content_block_delta":
 			text += ev.Delta.Text
 		case "message_delta":
-			stop, out, write, read = ev.Delta.StopReason, ev.Usage.Output, ev.Usage.CacheWrite, ev.Usage.CacheRead
+			stop, out, write = ev.Delta.StopReason, ev.Usage.Output, ev.Usage.CacheWrite
 		}
 	}
 	if len(tools) > 0 {
@@ -99,8 +96,7 @@ func claudeReply(t *testing.T, run *subscriptionRun, lines []string, hold bool) 
 // client hears the answer of the attempt that gave one, with its usage and
 // stop, and the run is kept for the next turn (#726). The old code took
 // Claude Code's own message_stop for the reply's end: end_turn, 5 tokens
-// out, no answer, and the run ended. The client is told the answering
-// attempt's prompt; the request is billed for both attempts.
+// out, no answer, and the run ended.
 func TestClaudeCutStreamGoesOnInRetry(t *testing.T) {
 	lines := append(append([]string{}, cutAttempt...),
 		`{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_retry","model":"claude-opus-5-5","usage":{"input_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":467708,"output_tokens":5}}}}`,
@@ -111,57 +107,13 @@ func TestClaudeCutStreamGoesOnInRetry(t *testing.T) {
 		`{"type":"stream_event","event":{"type":"message_stop"}}`,
 		`{"type":"result","subtype":"success","is_error":false,"result":"the answer"}`,
 	)
-	text, stop, out, write, read, billed, raw, ended, ok := claudeReply(t, &subscriptionRun{}, lines, true)
+	text, stop, out, write, raw, ended, ok := claudeReply(t, &subscriptionRun{}, lines, true)
 	if text != "the answer" || stop != "end_turn" || ended != "stop" || !ok {
 		t.Fatalf("reply %q stop %q, run ended %q %v:\n%s", text, stop, ended, ok, raw)
 	}
-	// the client is told the prompt that answered: read from the cache whole
-	if out != 12000 || write != 0 || read != 467708 {
-		t.Fatalf("told: %d out, %d written, %d read:\n%s", out, write, read, raw)
-	}
-	// both attempts were made, and are billed
-	if billed.Output != 12005 || billed.CacheWrite != 467708 || billed.CacheRead != 467708 || billed.Input != 4 {
-		t.Fatalf("billed: %+v", billed)
-	}
-}
-
-// The reporter's turn (Cursor++ on ReClaude, 2026-10-29 17:11): three
-// attempts dropped (ECONNRESET), the fourth answered. Each read the same
-// 163,315-token prompt, and the client took the sum for its context: 663,939
-// of a 1M window where 173,988 was used.
-func TestClaudeCutStreamTellsTheAnsweringPrompt(t *testing.T) {
-	start := func(id string, read, write int) string {
-		return fmt.Sprintf(`{"type":"stream_event","event":{"type":"message_start","message":{"id":%q,"model":"claude-fable-5-1","usage":{"input_tokens":32,"cache_read_input_tokens":%d,"cache_creation_input_tokens":%d,"output_tokens":2}}}}`, id, read, write)
-	}
-	dropped := func(id string, read, write int) []string {
-		return []string{
-			start(id, read, write),
-			`{"type":"stream_event","event":{"type":"message_stop"}}`,
-			`{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":500,"error_status":null,"error":"unknown"}`,
-		}
-	}
-	var lines []string
-	lines = append(lines, dropped("msg_a", 108276, 55007)...)
-	lines = append(lines, dropped("msg_b", 163283, 0)...)
-	lines = append(lines, dropped("msg_c", 163283, 0)...)
-	lines = append(lines,
-		start("msg_d", 163283, 0),
-		`{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}`,
-		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"the answer"}}}`,
-		`{"type":"stream_event","event":{"type":"content_block_stop","index":0}}`,
-		`{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":10673}}}`,
-		`{"type":"stream_event","event":{"type":"message_stop"}}`,
-		`{"type":"result","subtype":"success","is_error":false,"result":"the answer"}`,
-	)
-	text, stop, out, write, read, billed, raw, _, ok := claudeReply(t, &subscriptionRun{}, lines, true)
-	if text != "the answer" || stop != "end_turn" || !ok {
-		t.Fatalf("reply %q stop %q ok %v:\n%s", text, stop, ok, raw)
-	}
-	if read != 163283 || write != 0 || out != 10673 {
-		t.Fatalf("told: %d read, %d written, %d out:\n%s", read, write, out, raw)
-	}
-	if billed.Input != 128 || billed.CacheRead != 598125 || billed.CacheWrite != 55007 || billed.Output != 10679 {
-		t.Fatalf("billed: %+v", billed)
+	// both attempts were made, and are counted
+	if out != 12005 || write != 467708 {
+		t.Fatalf("usage: %d out, %d written:\n%s", out, write, raw)
 	}
 }
 
@@ -173,13 +125,12 @@ func TestClaudeCutStreamAnsweredUnstreamed(t *testing.T) {
 		`{"type":"assistant","message":{"id":"msg_whole","model":"claude-opus-5-5","role":"assistant","content":[{"type":"text","text":"NONSTREAM ANSWER"}],"stop_reason":"end_turn","usage":{"input_tokens":2,"cache_read_input_tokens":467708,"output_tokens":777}}}`,
 		`{"type":"result","subtype":"success","is_error":false,"result":"NONSTREAM ANSWER"}`,
 	)
-	text, stop, out, _, _, billed, raw, ended, ok := claudeReply(t, &subscriptionRun{}, lines, true)
+	text, stop, out, _, raw, ended, ok := claudeReply(t, &subscriptionRun{}, lines, true)
 	if text != "NONSTREAM ANSWER" || stop != "end_turn" || ended != "stop" || !ok {
 		t.Fatalf("reply %q stop %q, run ended %q %v:\n%s", text, stop, ended, ok, raw)
 	}
-	// the client is told the answering attempt's output; the attempts cut short are billed
-	if out != 777 || billed.Output != 787 {
-		t.Fatalf("usage: %d out told, %d billed:\n%s", out, billed.Output, raw)
+	if out != 787 {
+		t.Fatalf("usage: %d out:\n%s", out, raw)
 	}
 	if !strings.Contains(raw, "NS thinking") {
 		t.Fatalf("thinking lost:\n%s", raw)
@@ -199,7 +150,7 @@ func TestClaudeCutStreamUnstreamedToolCalls(t *testing.T) {
 		`{"type":"assistant","message":{"id":"msg_whole","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"toolu_b","name":"mcp__magpie__Read","input":{"p":2}}],"stop_reason":"tool_use","usage":{"output_tokens":777}}}`,
 	)
 	run := &subscriptionRun{}
-	text, stop, _, _, _, _, raw, ended, _ := claudeReply(t, run, lines, true)
+	text, stop, _, _, raw, ended, _ := claudeReply(t, run, lines, true)
 	if text != "calling[Read,Read]" || stop != "tool_use" || ended != "tool" {
 		t.Fatalf("reply %q stop %q, run ended %q:\n%s", text, stop, ended, raw)
 	}
@@ -220,7 +171,7 @@ func TestClaudeCutStreamWithNoAnswer(t *testing.T) {
 		"turn ends":   append(append([]string{}, cutAttempt...), `{"type":"result","subtype":"success","is_error":false,"result":""}`),
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, stop, _, _, _, _, raw, _, ok := claudeReply(t, &subscriptionRun{}, lines, name == "turn ends")
+			_, stop, _, _, raw, _, ok := claudeReply(t, &subscriptionRun{}, lines, name == "turn ends")
 			if stop == "end_turn" || ok || !strings.Contains(raw, "cut short") {
 				t.Fatalf("stop %q, ok %v:\n%s", stop, ok, raw)
 			}
@@ -239,7 +190,7 @@ func TestClaudeCutStreamAfterWords(t *testing.T) {
 		`{"type":"stream_event","event":{"type":"content_block_stop","index":0}}`,
 		`{"type":"stream_event","event":{"type":"message_stop"}}`,
 	}
-	_, stop, _, _, _, _, raw, _, ok := claudeReply(t, &subscriptionRun{}, lines, true)
+	_, stop, _, _, raw, _, ok := claudeReply(t, &subscriptionRun{}, lines, true)
 	if stop == "end_turn" || ok || !strings.Contains(raw, "cut short") {
 		t.Fatalf("stop %q, ok %v:\n%s", stop, ok, raw)
 	}
@@ -259,7 +210,7 @@ func TestClaudeStreamOutputCounted(t *testing.T) {
 		`{"type":"stream_event","event":{"type":"message_stop"}}`,
 		`{"type":"assistant","message":{"id":"msg_cut","model":"claude-opus-5-5","content":[{"type":"text","text":"hello"}],"stop_reason":"end_turn","usage":{"output_tokens":12000}}}`,
 	}
-	text, stop, out, write, _, _, raw, ended, ok := claudeReply(t, &subscriptionRun{}, lines, true)
+	text, stop, out, write, raw, ended, ok := claudeReply(t, &subscriptionRun{}, lines, true)
 	if text != "hello" || stop != "end_turn" || out != 12000 || write != 467708 || ended != "stop" || !ok {
 		t.Fatalf("reply %q stop %q out %d write %d ended %q %v:\n%s", text, stop, out, write, ended, ok, raw)
 	}

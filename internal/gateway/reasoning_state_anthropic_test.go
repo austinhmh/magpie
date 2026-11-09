@@ -231,7 +231,7 @@ func TestClaudeSubscriptionKeepsSealedThinking(t *testing.T) {
 		lines = append(lines, `{"type":"stream_event","event":`+l+`}`)
 	}
 	lines = append(lines, `{"type":"result","subtype":"success","is_error":false,"result":"It's 15 degrees."}`)
-	text, _, _, _, _, _, raw, _, _ := claudeReply(t, &subscriptionRun{}, lines, true)
+	text, _, _, _, raw, _, _ := claudeReply(t, &subscriptionRun{}, lines, true)
 	if text != "It's 15 degrees." {
 		t.Fatalf("reply %q:\n%s", text, raw)
 	}
