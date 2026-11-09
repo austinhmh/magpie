@@ -1,0 +1,19 @@
+internal/provider/keepalive_claude_test.go
+  s_d2dbf8cf7066b0::t_29ba2c83e6f9e7 182-189,191,196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8125224971d01c734ce7a8a0697c49654f8cddb8",
+  "prompts": {},
+  "sessions": {
+    "s_d2dbf8cf7066b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "56a2016f-d034-41d0-85ae-7c49cb12ccfe",
+        "model": "model-syr9n5"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
