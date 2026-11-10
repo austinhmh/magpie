@@ -1,0 +1,23 @@
+internal/gateway/claude_subscription.go
+  s_2a199a91520247::t_9358ed65093fe7 2036-2084,2092
+docs/subsystems/claude-subscription-bridge.md
+  s_2a199a91520247::t_868e2ee84ea5db 1292-1309
+internal/gateway/claude_tui_stop_test.go
+  s_2a199a91520247::t_aa5af8ca74199f 126-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e2f20a3153767fa06fe39e8b5f2394f4a1277aea",
+  "prompts": {},
+  "sessions": {
+    "s_2a199a91520247": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4cc89148-572f-4f31-b345-3246c5d6b716",
+        "model": "model-syr9n5"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
