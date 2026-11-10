@@ -2033,6 +2033,55 @@ func (r *subscriptionRun) released() {
 	}
 }
 
+// giveUpDroppedCalls stops an interactive run that waits on tool calls the
+// client dropped: the conversation's next turn goes on from before the
+// turn that made them (backKey), carries none of them, and is the user's
+// new message, not results. Cursor sends that once its user stopped a
+// tool while it ran. The client never went away mid-reply, so nothing let
+// the run go: the turn found it busy, was told whole to a new Claude Code
+// (11-10 13:44: 26K tokens written again, the stopped turn's calls unknown
+// to it), and the run waited out its 30 minutes. It is let go as one whose
+// client went away (letGo, stopTUI): its calls are answered as
+// interrupted, and it waits at backKey, where resume takes it for this
+// turn. A request still carrying a call it waits on is the client's own
+// mid-turn ask, and an aside or one offering tools it wasn't told of goes
+// elsewhere: those leave it waiting.
+func (b *subscriptionBridge) giveUpDroppedCalls(req *Request, owner, key string, since []Message) {
+	if slices.ContainsFunc(since[len(since)-1].Parts, func(p Part) bool { return p.Kind == ToolResult }) {
+		return
+	}
+	carried := map[string]bool{}
+	for _, message := range since {
+		for _, part := range message.Parts {
+			if part.Kind == ToolCall {
+				carried[part.ID] = true
+			}
+		}
+	}
+	b.mu.Lock()
+	var busyRuns []*subscriptionRun
+	for _, run := range b.runs {
+		if run.owned() == owner && run.idleKey == "" {
+			busyRuns = append(busyRuns, run)
+		}
+	}
+	b.mu.Unlock()
+	for _, run := range busyRuns {
+		run.mu.Lock()
+		dropped := run.tui && !run.closed && run.backKey == key && !run.parkedAt.IsZero() && len(run.pending) > 0
+		for id := range run.pending {
+			dropped = dropped && !carried[id]
+		}
+		run.mu.Unlock()
+		if !dropped || !run.offers(req.Tools) || run.asideOf(req) {
+			continue
+		}
+		log.Printf("claude: the conversation's next turn left out the tool calls its run waits on; the turn that made them is stopped")
+		run.letGo()
+		return
+	}
+}
+
 // resume hands a conversation's next turn to the run that had its last
 // one, when one is waiting: the user's messages since, and nothing else.
 func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRun, <-chan Event) {
@@ -2040,6 +2089,7 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	if key == "" {
 		return nil, nil
 	}
+	b.giveUpDroppedCalls(req, owner, key, since)
 	b.mu.Lock()
 	run := b.idle[key]
 	back, at, atMsg := "", "", "" // the turn the run is taken back from first, the line before it and its reply

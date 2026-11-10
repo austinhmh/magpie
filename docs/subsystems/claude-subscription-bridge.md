@@ -1289,6 +1289,24 @@ turn each time). `TestClaudeInteractiveTurnGivenUpOnIsStoppedAndItsRunKept`,
 `TestClaudeStoppedTurnAnswersItsPendingCall` and
 `TestShimInterruptStopsTheTurn` hold it.
 
+A run waiting on calls the client dropped is stopped the same way
+(`giveUpDroppedCalls`, from `resume`). Cursor's user stopping a tool while
+it runs sends nothing: the reply that made the call had ended, so no
+client went away mid-reply and nothing let the run go. The next message
+goes on from the conversation before the turn (the run's `backKey`), the
+stopped turn left out and its question quoted. An interactive run waiting
+on calls (`pending`, `parkedAt`) at that key is let go (`letGo`) and goes
+on with the message, its calls answered as interrupted, when the request
+carries none of those calls, ends in a message rather than tool results,
+offers no tool the run wasn't told of (`offers`) and isn't an aside
+(`asideOf`). Logged "left out the tool calls its run waits on". Before,
+the message found the run busy, was told whole to a new Claude Code
+(11-10 13:44 on a test gateway: 9,793 tokens read, 26,329 written, the
+stopped turn's two finished writes unknown to it), and the run waited out
+its turn's 30 minutes. A request still carrying one of the calls (the
+client's own ask mid-turn) leaves the run waiting; a -p run is left as
+before. `TestClaudeTurnWhoseCallsTheClientDroppedGoesOnInItsRun` holds it.
+
 A run that doesn't answer the interrupt within `interruptLongest` (10s) is
 ended, and first cuts a copy of its session before the turn
 (`shelveGivenUp`, `cutReply` at `backLine`/`backMsg`, as `retryBranch`

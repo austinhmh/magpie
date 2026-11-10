@@ -123,3 +123,57 @@ func TestClaudeStoppedTurnAnswersItsPendingCall(t *testing.T) {
 		t.Fatalf("kept at the turn before: %v, call still routed to it: %v", bridge.idle["before"] == run, bridge.calls["call_1"] != nil)
 	}
 }
+
+// A run waiting on a call the client dropped, its user having stopped the
+// tool while it ran, goes on with the client's next message: that message
+// follows the conversation before the turn and carries no call of it
+// (11-10 13:44, where it found the run "busy" and a new Claude Code was
+// told the whole conversation again). A request that still carries the
+// call, or offers no tools, leaves the run waiting on it.
+func TestClaudeTurnWhoseCallsTheClientDroppedGoesOnInItsRun(t *testing.T) {
+	owner := "claude\x00u"
+	first := Message{Role: "user", Parts: []Part{{Kind: Text, Text: "the conversation so far. fix the bug"}}}
+	reply := Message{Role: "assistant", Parts: []Part{{Kind: Text, Text: "fixed it"}}}
+	asked := Message{Role: "user", Parts: []Part{{Kind: Text, Text: "uppercase every file"}}}
+	called := Message{Role: "assistant", Parts: []Part{{Kind: ToolCall, ID: "call_d", Name: "Write"}}}
+	next := Message{Role: "user", Parts: []Part{{Kind: Text, Text: "go on with what was stopped"}}}
+	conversation := func(since ...Message) []Message { return append([]Message{first, reply}, since...) }
+	cases := []struct {
+		name    string
+		req     *Request
+		stopped bool
+	}{
+		{"the call left out", &Request{Tools: []Tool{{Name: "Write"}}, Messages: conversation(next)}, true},
+		{"the call still carried", &Request{Tools: []Tool{{Name: "Write"}}, Messages: conversation(asked, called, next)}, false},
+		{"an aside with no tools", &Request{Messages: conversation(next)}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			bridge := New().subscription
+			key, _ := nextTurn(c.req, owner)
+			waiter := make(chan mcpToolResult, 1)
+			run := &subscriptionRun{bridge: bridge, tui: true, backKey: key, parkedAt: time.Now(),
+				tools: map[string]bool{"Write": true}, timer: time.AfterFunc(time.Hour, func() {}),
+				pending: map[string]chan mcpToolResult{"call_d": waiter}}
+			t.Cleanup(func() { run.timer.Stop() })
+			run.owner.Store(&owner)
+			run.stdin = &reconnectAnswering{run: run}
+			bridge.runs["run"] = run
+			bridge.calls["call_d"] = run
+			got, _ := bridge.resume(c.req, owner)
+			if (got == run) != c.stopped {
+				t.Fatalf("the next message went on in the waiting run: %v, want %v", got == run, c.stopped)
+			}
+			select {
+			case answer := <-waiter:
+				if !c.stopped || !answer.IsError {
+					t.Fatalf("the call was answered %+v", answer)
+				}
+			default:
+				if c.stopped {
+					t.Fatal("the dropped call was left waiting")
+				}
+			}
+		})
+	}
+}
