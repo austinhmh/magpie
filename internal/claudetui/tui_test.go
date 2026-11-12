@@ -669,7 +669,7 @@ func TestShimTurnsInteractive(t *testing.T) {
 	}
 	args, _ := os.ReadFile(filepath.Join(os.Getenv("MAGPIE_TUI_TEST_CFG"), "args"))
 	got := strings.Split(string(args), "\n")
-	for _, no := range []string{"-p", "--dangerously-skip-permissions", "--output-format", "--verbose", "--thinking-display"} {
+	for _, no := range []string{"-p", "--dangerously-skip-permissions", "--output-format", "--verbose"} {
 		if slices.Contains(got, no) {
 			t.Errorf("the interactive Claude Code was given %s: %q", no, got)
 		}
@@ -678,6 +678,11 @@ func TestShimTurnsInteractive(t *testing.T) {
 		if !slices.Contains(got, yes) {
 			t.Errorf("the interactive Claude Code wasn't given %s: %q", yes, got)
 		}
+	}
+	// its thinking is summarized as -p's is: without the flag a Claude 5's
+	// thinking came back with no text
+	if i := slices.Index(got, "--thinking-display"); i < 0 || i+1 >= len(got) || got[i+1] != "summarized" {
+		t.Errorf("the interactive Claude Code wasn't given --thinking-display summarized: %q", got)
 	}
 }
 

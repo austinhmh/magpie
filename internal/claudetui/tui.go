@@ -1603,10 +1603,14 @@ func newUUID() string {
 }
 
 // interactiveArgs are `claude -p` arguments made the interactive mode's:
-// the same model, tools, MCP servers, settings, effort, system prompt and
-// session, without what only -p takes; its permission prompts kept, and
-// magpie's MCP tools (and the web search -p was given) allowed without
-// one, where -p skipped them all.
+// the same model, tools, MCP servers, settings, effort, thinking display,
+// system prompt and session, without what only -p takes; its permission
+// prompts kept, and magpie's MCP tools (and the web search -p was given)
+// allowed without one, where -p skipped them all. --thinking-display stays:
+// the interactive mode takes it too, and without it (and with no
+// showThinkingSummaries setting, --setting-sources "") Claude Code asks for
+// none, so a Claude 5's thinking came back signed with no text and the
+// client's thinking block was empty.
 func interactiveArgs(pargs []string) []string {
 	var out []string
 	allowed := []string{"mcp__magpie"}
@@ -1616,7 +1620,7 @@ func interactiveArgs(pargs []string) []string {
 		case "-p", "--print", "--verbose", "--include-partial-messages", "--dangerously-skip-permissions",
 			"--no-session-persistence", "--replay-user-messages":
 			continue
-		case "--output-format", "--input-format", "--thinking-display", "--json-schema", "--permission-mode":
+		case "--output-format", "--input-format", "--json-schema", "--permission-mode":
 			i++
 			continue
 		case "--tools":

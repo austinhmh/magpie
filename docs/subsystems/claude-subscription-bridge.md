@@ -216,8 +216,11 @@ talks to it as it talks to `-p`: stream-json in and out. The helper:
 
 - turns the arguments into the interactive mode's (`interactiveArgs`):
   `-p`, the stream-json formats, `--verbose`,
-  `--include-partial-messages`, `--thinking-display`,
+  `--include-partial-messages`,
   `--dangerously-skip-permissions` and `--no-session-persistence` go;
+  `--thinking-display` stays, as the interactive mode takes it too:
+  without it (and no `showThinkingSummaries`, `--setting-sources ""`)
+  a Claude 5's thinking comes back signed with no text;
   `--permission-mode default --allowedTools mcp__magpie[,WebSearch]
   --no-chrome` come. Permissions are not skipped: only magpie's MCP tools
   (and the web search `-p` was given) are allowed, and nothing else is
