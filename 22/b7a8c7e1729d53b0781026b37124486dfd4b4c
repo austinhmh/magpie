@@ -1,0 +1,30 @@
+internal/gateway/reclaude_test.go
+  s_27d8ccc3125bba::t_9ed25ae2a50779 326-330,332-333,335-336
+  s_27d8ccc3125bba::t_e10d56bedc0c20 302-307
+  s_27d8ccc3125bba::t_9becef22a3c466 370-374
+internal/gateway/claude_subscription.go
+  s_27d8ccc3125bba::t_9a17ffd700549f 1513-1514
+  s_27d8ccc3125bba::t_3adee468a176d9 1211
+  s_27d8ccc3125bba::t_2ee1d4786ecac7 1558
+  s_27d8ccc3125bba::t_e79b95cc145f4d 1820-1821,1824
+docs/subsystems/claude-subscription-bridge.md
+  s_27d8ccc3125bba::t_6ee47e53a1d24b 25-38
+docs/reclaude-local-bridge.md
+  s_27d8ccc3125bba::t_25b1dbccb345bb 242-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22b7a8c7e1729d53b0781026b37124486dfd4b4c",
+  "prompts": {},
+  "sessions": {
+    "s_27d8ccc3125bba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b3968416-594d-4586-8cc6-d83f2026cd6a",
+        "model": "model-6kh2z3"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
