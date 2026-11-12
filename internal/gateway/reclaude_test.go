@@ -299,10 +299,12 @@ done
 	}
 }
 
-// With ReClaude's config folder known, its runs are the interactive mode
-// (entrypoint cli), and the helper is told that folder: the launcher sets
-// it for Claude Code alone, and the helper reads the transcript there.
-func TestReClaudeRunsInteractiveWithItsConfigDirKnown(t *testing.T) {
+// With ReClaude's config folder known, its runs are still -p: in the
+// interactive mode a turn whose tool results found no run waiting started
+// a new Claude Code each time (30-86s to the first token on 11-12), and its
+// thinking came back with no text. tuiEnv still tells the helper the
+// folder, for a run that is the interactive mode by another way.
+func TestReClaudeRunsAsPrintWithItsConfigDirKnown(t *testing.T) {
 	fresh(t)
 	t.Setenv("MAGPIE_NO_ACCOUNTS", "")
 	was := claudeTUIRuns
@@ -321,14 +323,17 @@ func TestReClaudeRunsInteractiveWithItsConfigDirKnown(t *testing.T) {
 		t.Fatal(err)
 	}
 	binary := claudeCLI{path: "/usr/local/bin/reclaude"}
-	if !claudeTUIOn() {
-		t.Fatal("the interactive mode is off with ReClaude's config folder known")
+	if provider.ReClaudeConfigDir() != reClaudeConfigDir {
+		t.Fatalf("ReClaude's config folder is %q, want %q", provider.ReClaudeConfigDir(), reClaudeConfigDir)
 	}
-	if code, why := claudeMachineWhy(binary); why != "" {
-		t.Fatalf("claudeMachineWhy says %q (%s), want the interactive mode", code, why)
+	if claudeTUIOn() {
+		t.Fatal("the interactive mode is on with ReClaude on")
 	}
-	if tui, code := claudeTUI(&Request{}, binary); !tui {
-		t.Fatalf("claudeTUI says -p (%q) with ReClaude's config folder known", code)
+	if code, _ := claudeMachineWhy(binary); code != "reclaude" {
+		t.Fatalf("claudeMachineWhy says %q, want reclaude", code)
+	}
+	if tui, code := claudeTUI(&Request{}, binary); tui || code != "reclaude" {
+		t.Fatalf("claudeTUI says %v %q with ReClaude's config folder known, want -p for reclaude", tui, code)
 	}
 	helperEnvironment := binary.tuiEnv(provider.WithReClaude(t.Context()), nil, "")
 	if !slices.Contains(helperEnvironment, "CLAUDE_CONFIG_DIR="+reClaudeConfigDir) {
@@ -362,11 +367,11 @@ func TestReClaudeWarmUpAsksSonnet(t *testing.T) {
 	}
 }
 
-// With ReClaude on and its config folder not known (no ~/.rec here), every
-// Claude run is -p whatever the interactive mode's switch says: the
-// helper couldn't find the transcript, and under the interactive mode
-// (claudeTUIOn) a -p run is refused and never reused, so each of a
-// conversation's turns would start a Claude Code anew. The gateway's tests
+// With ReClaude on, every Claude run is -p whatever the interactive mode's
+// switch says (here with no ~/.rec, its config folder not known either):
+// under the interactive mode (claudeTUIOn) a -p run is refused and never
+// reused, so each of a conversation's turns would start a Claude Code
+// anew. The gateway's tests
 // run without the interactive mode's shim (no-shim), which hid that
 // startRun refused a ReClaude run: the shim is at hand here, as it is in a
 // real gateway, and a turn goes through.

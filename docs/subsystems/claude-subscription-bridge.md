@@ -22,21 +22,20 @@ waiting for a process slot, so a disabled source is not started from a
 queued request. A failure never falls through to a personal Claude account.
 Model probes and allowance reads use the same launcher and a per-call
 source context. The MCP callback, turn/session handling and protocol
-translation stay the same. Its runs follow the interactive mode's switch
-as any Claude run's do when ReClaude's config folder is known (below):
-the launcher replaces itself with the real Claude Code, which, run in the
-helper's terminal, sends its requests as the interactive mode (entrypoint
-`cli`; a probe on 11-09 with Claude Code 2.1.318 answered, streamed through
-the tap, and wrote its transcript there). `tuiEnv` tells the helper that
-folder, since the launcher sets `CLAUDE_CONFIG_DIR` for Claude Code alone
-and the helper reads the transcript from it
-(`TestReClaudeRunsInteractiveWithItsConfigDirKnown`). When the folder isn't
-known, `claudeTUIOn` is false and `claudeMachineWhy` says `reclaude`
-("ReClaude's config folder isn't known"), logged on each run: the run is
-`-p`, never refused for not being interactive, kept for its conversation's
-next turn, and the provider editor's "Claude Code runs as" row says every
-request runs as claude -p through ReClaude (`TestReClaudeRunsAsPrint`,
-`claude-mode.test.cjs`). Until 11-09 every ReClaude run was `-p`.
+translation stay the same. Every ReClaude run is `-p`, its config folder
+known or not: `claudeTUIOn` is false and `claudeMachineWhy` says
+`reclaude` ("ReClaude's launcher runs Claude Code as claude -p"), not
+logged on each run. The run is never refused for not being interactive, is
+kept for its conversation's next turn, and the provider editor's "Claude
+Code runs as" row says every request runs as claude -p through ReClaude
+(`TestReClaudeRunsAsPrint`, `TestReClaudeRunsAsPrintWithItsConfigDirKnown`,
+`claude-mode.test.cjs`). From 11-09 to 11-12 a ReClaude run whose config
+folder was known was the interactive mode. Its thinking came back with
+no text, since the helper dropped `--thinking-display`. A turn whose tool
+results found no run waiting went on in a new Claude Code each time, which
+took 30 to 86 seconds to the first token on 11-12. So ReClaude runs are
+`-p` again. `tuiEnv` still tells the helper that folder, since the
+launcher sets `CLAUDE_CONFIG_DIR` for Claude Code alone.
 ReClaude's daemon ports are not OpenAI-compatible upstreams; its FAQ does
 not support third-party API-key clients, so this is a local integration,
 not an officially supported ReClaude API.
