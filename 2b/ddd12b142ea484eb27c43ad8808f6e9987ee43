@@ -1,0 +1,23 @@
+docs/subsystems/claude-subscription-bridge.md
+  s_27d8ccc3125bba::t_73daef0630019a 219,221-223
+internal/claudetui/tui.go
+  s_27d8ccc3125bba::t_75e3f77ae77940 1606-1613,1623
+internal/claudetui/tui_test.go
+  s_27d8ccc3125bba::t_a3e0fbf044f543 672,682-686
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2bddd12b142ea484eb27c43ad8808f6e9987ee43",
+  "prompts": {},
+  "sessions": {
+    "s_27d8ccc3125bba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b3968416-594d-4586-8cc6-d83f2026cd6a",
+        "model": "model-6kh2z3"
+      },
+      "human_author": "mi <mi@miMacBook-Pro.local>"
+    }
+  }
+}
